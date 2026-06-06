@@ -25,7 +25,12 @@
 
   // ---------- 虛擬搖桿 ----------
   const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
-  function pStart(x, y, id) { if (isPaused()) return; joy.active = true; joy.id = id; joy.ox = x; joy.oy = y; joy.dx = 0; joy.dy = 0; joy.mag = 0; }
+  function moveZoneTop() { return H * 0.6; } // 只有畫面下方 40% 是移動控制區
+  function pStart(x, y, id) {
+    if (isPaused()) return;
+    if (y < moveZoneTop()) return; // 點擊中間/上方不啟動移動，避免擋住角色
+    joy.active = true; joy.id = id; joy.ox = x; joy.oy = y; joy.dx = 0; joy.dy = 0; joy.mag = 0;
+  }
   function pMove(x, y) {
     if (!joy.active) return;
     let dx = x - joy.ox, dy = y - joy.oy; const max = 70; const m = Math.hypot(dx, dy);
@@ -59,7 +64,7 @@
   }
   function enemyShoot(e, ang) {
     const sp = 220;
-    G.world.foeShots.push({ x: e.x, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: e.dmg, life: 3, r: 7 });
+    G.world.foeShots.push({ x: e.x, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: e.dmg, life: 1.6, r: 7 });
   }
 
   // ---------- 更新 ----------
@@ -134,9 +139,11 @@
       const d = U.dist(e.x, e.y, p.x, p.y);
       const a = Math.atan2(p.y - e.y, p.x - e.x);
       if (e.behavior === "ranged") {
-        if (d > 240) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
-        else if (d < 160) { e.x -= Math.cos(a) * spd * dt; e.y -= Math.sin(a) * spd * dt; }
-        e.fireCd -= dt; if (e.fireCd <= 0) { enemyShoot(e, a); e.fireCd = U.rand(1.6, 2.8); }
+        // 拉近距離才射擊，避免從畫面外攻擊
+        const want = 150;
+        if (d > want + 45) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
+        else if (d < want - 45) { e.x -= Math.cos(a) * spd * dt; e.y -= Math.sin(a) * spd * dt; }
+        e.fireCd -= dt; if (e.fireCd <= 0 && d < 230) { enemyShoot(e, a); e.fireCd = U.rand(1.6, 2.8); }
       } else if (e.behavior === "boss") {
         e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
         e.fireCd -= dt;
@@ -351,22 +358,95 @@
 
     ctx.restore(); // shake
 
-    // 搖桿（螢幕座標）
+    // 稀有以上掉落：螢幕邊緣指向箭頭
+    drawLootArrows(cx, cy);
+
+    // 小地圖
+    drawMinimap(area);
+
+    // 移動控制區 + 搖桿（螢幕座標）
+    const zTop = moveZoneTop();
+    ctx.fillStyle = "rgba(255,255,255,.03)"; ctx.fillRect(0, zTop, W, H - zTop);
+    ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, zTop); ctx.lineTo(W, zTop); ctx.stroke();
     if (joy.active) {
       ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
       ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 48, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = .75; ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 26, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
+    } else {
+      // 休息中的移動球指示
+      const hx = W * 0.32, hy = H - 96;
+      ctx.globalAlpha = .18; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hx, hy, 46, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = .28; ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(hx, hy, 24, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = .35; ctx.fillStyle = "#fff"; ctx.font = "600 12px system-ui"; ctx.textAlign = "center";
+      ctx.fillText("拖曳移動", hx, hy + 70); ctx.textAlign = "left";
+      ctx.globalAlpha = 1;
     }
 
-    // Boss 血條（螢幕頂部）
+    // Boss 血條（螢幕頂部，避開右上小地圖）
     if (w.boss && w.boss.hp > 0) {
-      const bw = W - 60, bx = 30, by = 96;
+      const bw = W - 24 - 104, bx = 12, by = 74;
       ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx, by, bw, 14);
       ctx.fillStyle = "#e0457a"; ctx.fillRect(bx, by, bw * (w.boss.hp / w.boss.maxHp), 14);
       ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 14);
       ctx.fillStyle = "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
-      ctx.fillText("👑 " + w.boss.name, W / 2, by - 4); ctx.textAlign = "left";
+      ctx.fillText("👑 " + w.boss.name, bx + bw / 2, by - 4); ctx.textAlign = "left";
+    }
+  }
+
+  // ---------- 小地圖 ----------
+  function drawMinimap(area) {
+    const w = G.world, p = G.player;
+    const mmW = 92, mmH = U.clamp(92 * area.h / area.w, 60, 150);
+    const mmX = W - mmW - 10, mmY = 68;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(mmX, mmY, mmW, mmH);
+    ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.lineWidth = 1; ctx.strokeRect(mmX, mmY, mmW, mmH);
+    ctx.beginPath(); ctx.rect(mmX, mmY, mmW, mmH); ctx.clip();
+    const sx = (v) => mmX + (v / area.w) * mmW, sy = (v) => mmY + (v / area.h) * mmH;
+    for (const pt of area.portals) {
+      const locked = pt.reqLevel && G.save.level < pt.reqLevel;
+      ctx.fillStyle = locked ? "#888" : "#3ad0ff";
+      ctx.fillRect(sx(pt.x) - 3, sy(pt.y) - 3, 6, 6);
+    }
+    for (const g of w.grounds) {
+      if (g.item.rarity !== "rare" && g.item.rarity !== "legend") continue;
+      ctx.fillStyle = G.RARITY[g.item.rarity].color;
+      ctx.fillRect(sx(g.x) - 2, sy(g.y) - 2, 4, 4);
+    }
+    for (const e of w.enemies) {
+      if (e.hp <= 0) continue;
+      ctx.fillStyle = e.boss ? "#ffd166" : (e.behavior === "ranged" ? "#5b7dff" : "#ff5470");
+      ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), e.boss ? 4 : 2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = "#39d98a"; ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------- 稀有以上掉落的邊緣箭頭 ----------
+  function drawLootArrows(cx, cy) {
+    const w = G.world;
+    const ccx = W / 2, ccy = H / 2, mh = W / 2 - 26, mv = H / 2 - 26;
+    for (const g of w.grounds) {
+      if (g.item.rarity !== "rare" && g.item.rarity !== "legend") continue;
+      const sx = g.x - cx, sy = g.y - cy;
+      if (sx >= 0 && sx <= W && sy >= 0 && sy <= H) continue; // 螢幕內不畫箭頭
+      const ang = Math.atan2(sy - ccy, sx - ccx);
+      const tX = Math.abs(Math.cos(ang)) < 1e-3 ? Infinity : mh / Math.abs(Math.cos(ang));
+      const tY = Math.abs(Math.sin(ang)) < 1e-3 ? Infinity : mv / Math.abs(Math.sin(ang));
+      const t = Math.min(tX, tY);
+      const tx = ccx + Math.cos(ang) * t, ty = ccy + Math.sin(ang) * t;
+      const color = G.RARITY[g.item.rarity].color;
+      ctx.save(); ctx.translate(tx, ty); ctx.rotate(ang);
+      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.moveTo(13, 0); ctx.lineTo(-7, -9); ctx.lineTo(-7, 9); ctx.fill();
+      ctx.restore();
+      ctx.font = "15px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(g.item.ic, tx - Math.cos(ang) * 18, ty - Math.sin(ang) * 18);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
   }
 

@@ -58,6 +58,11 @@ html, body {
 .itemcell { aspect-ratio: 1; border-radius: 10px; border: 2px solid #2e2a44; background: rgba(255,255,255,.03);
   display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; padding: 3px; position: relative; }
 .itemcell .ic { font-size: 22px; } .itemcell .nm { font-size: 9px; text-align: center; margin-top: 2px; line-height: 1.05; }
+.itemcell .up { position: absolute; top: 2px; right: 4px; color: #4ee07a; font-size: 13px; font-weight: 900; text-shadow: 0 0 4px rgba(0,0,0,.8); }
+#bagSellRow { display: flex; gap: 6px; margin-bottom: 8px; }
+#bagSellRow .sellbtn { flex: 1; padding: 9px 4px; border-radius: 9px; border: 1px solid #4b3b78; background: rgba(255,255,255,.05);
+  color: #cbb9e0; font-size: 12px; font-weight: 700; cursor: pointer; }
+#bagSellRow .sellbtn:active { background: rgba(255,255,255,.14); }
 .r-common { border-color: #6b6b6b; } .r-magic { border-color: #4a7dff; } .r-rare { border-color: #ffcc33; } .r-legend { border-color: #ff8a2a; box-shadow: 0 0 8px rgba(255,138,42,.5); }
 .t-common { color:#cfcfcf;} .t-magic{color:#7aa2ff;} .t-rare{color:#ffd84a;} .t-legend{color:#ffae5e;}
 

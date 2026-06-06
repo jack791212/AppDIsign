@@ -68,6 +68,18 @@
     G.toast("賣出 +🪙" + G.RARITY[item.rarity].sell);
     G.persist(); G.refreshHud(); renderBag();
   };
+  // 一鍵賣出：稀有度 <= maxIdx 的所有背包道具
+  G.sellByRarity = function (maxIdx) {
+    const keep = []; let n = 0, gold = 0;
+    for (const it of G.save.bag) {
+      if (G.RARITY_ORDER.indexOf(it.rarity) <= maxIdx) { gold += G.RARITY[it.rarity].sell; n++; }
+      else keep.push(it);
+    }
+    if (n === 0) { G.toast("沒有符合條件的裝備"); return; }
+    G.save.bag = keep; G.save.gold += gold;
+    G.toast("賣出 " + n + " 件，+🪙" + gold);
+    G.persist(); G.refreshHud(); renderBag();
+  };
 
   // ---------- 背包面板 ----------
   function slotCellHtml(item) {
@@ -96,9 +108,12 @@
     }
     for (const it of bag) {
       const r = G.RARITY[it.rarity];
+      const cur = G.save.equipped[it.slot];
+      const better = G.itemScore(it) > G.itemScore(cur);
       const div = document.createElement("div");
       div.className = "itemcell r-" + r.cls;
-      div.innerHTML = `<div class="ic">${it.ic}</div><div class="nm t-${r.cls}">${it.baseName}</div>`;
+      div.innerHTML = `<div class="ic">${it.ic}</div><div class="nm t-${r.cls}">${it.baseName}</div>`
+        + (better ? `<div class="up">▲</div>` : "");
       div.onclick = () => G.openItem(it, false);
       grid.appendChild(div);
     }
@@ -109,7 +124,13 @@
   }
   G.renderBag = renderBag;
 
-  G.openBag = function () { renderBag(); $("bagPanel").classList.add("show"); };
+  G.openBag = function () {
+    renderBag();
+    document.querySelectorAll("#bagSellRow .sellbtn").forEach((b) => {
+      b.onclick = () => { if (confirm("確定賣出符合條件的裝備？")) G.sellByRarity(+b.dataset.r); };
+    });
+    $("bagPanel").classList.add("show");
+  };
   G.closeBag = function () { $("bagPanel").classList.remove("show"); };
 
   // ---------- 道具彈窗 ----------
@@ -122,12 +143,23 @@
       aff += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`;
     }
     if (item.affixes.length === 0) aff = `<div class="aff" style="color:#8a839e">（無特殊詞條）</div>`;
-    // 與目前裝備比較提示
+    // 與目前裝備比較（自動顯示當前裝備詞條）
     let cmp = "";
     if (!equipped) {
       const cur = G.save.equipped[item.slot];
       const diff = G.itemScore(item) - G.itemScore(cur);
-      cmp = `<div style="font-size:12px;margin-top:8px;color:${diff >= 0 ? "#7af5d0" : "#ff9bb0"}">${diff >= 0 ? "▲ 評分較高" : "▼ 評分較低"}（目前 ${G.SLOT_INFO[item.slot].name}：${cur ? cur.baseName : "無"}）</div>`;
+      let curAff = "";
+      if (cur) {
+        for (const af of cur.affixes) {
+          const info = G.affixText(af);
+          curAff += `<div class="aff ${info.proc ? "proc" : ""}" style="opacity:.6">${info.proc ? "✦ " : "• "}${info.text}</div>`;
+        }
+        if (cur.affixes.length === 0) curAff = `<div class="aff" style="opacity:.45">（無特殊詞條）</div>`;
+      } else curAff = `<div class="aff" style="opacity:.45">（此欄位尚未裝備）</div>`;
+      cmp = `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #3a3358">` +
+        `<div style="font-size:13px;font-weight:700;margin-bottom:5px;color:${diff >= 0 ? "#7af5d0" : "#ff9bb0"}">${diff >= 0 ? "▲ 比目前裝備更好" : "▼ 比目前裝備差"}（評分 ${diff >= 0 ? "+" : ""}${diff}）</div>` +
+        `<div style="font-size:11px;color:#9b8fc0;margin-bottom:4px">目前 ${G.SLOT_INFO[item.slot].name}：${cur ? cur.baseName : "無"}</div>` +
+        curAff + `</div>`;
     }
     card.innerHTML =
       `<div class="iname t-${r.cls}">${item.ic} ${item.baseName}</div>` +
