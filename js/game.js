@@ -25,7 +25,7 @@
 
   // ---------- 虛擬搖桿 ----------
   const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
-  function moveZoneTop() { return H * 0.6; } // 只有畫面下方 40% 是移動控制區
+  function moveZoneTop() { return H * 0.8; } // 只有畫面下方 20% 是移動控制區
   function pStart(x, y, id) {
     if (isPaused()) return;
     if (y < moveZoneTop()) return; // 點擊中間/上方不啟動移動，避免擋住角色
@@ -364,25 +364,22 @@
     // 小地圖
     drawMinimap(area);
 
-    // 移動控制區 + 搖桿（螢幕座標）
+    // 移動控制區 + 搖桿（螢幕座標，無背景）
     const zTop = moveZoneTop();
-    ctx.fillStyle = "rgba(255,255,255,.03)"; ctx.fillRect(0, zTop, W, H - zTop);
-    ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, zTop); ctx.lineTo(W, zTop); ctx.stroke();
+    const bandH = H - zTop;
     if (joy.active) {
       ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
       ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 48, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = .75; ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 26, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
     } else {
-      // 休息中的移動球指示
-      const hx = W * 0.32, hy = H - 96;
-      ctx.globalAlpha = .18; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(hx, hy, 46, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = .28; ctx.fillStyle = "#fff";
-      ctx.beginPath(); ctx.arc(hx, hy, 24, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = .35; ctx.fillStyle = "#fff"; ctx.font = "600 12px system-ui"; ctx.textAlign = "center";
-      ctx.fillText("拖曳移動", hx, hy + 70); ctx.textAlign = "left";
+      // 休息中的移動球指示（水平置中）
+      const hx = W / 2, hy = zTop + bandH / 2;
+      const rr = U.clamp(bandH / 2 - 8, 28, 46);
+      ctx.globalAlpha = .2; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hx, hy, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(hx, hy, rr * 0.52, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
     }
 

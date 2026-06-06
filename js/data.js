@@ -72,21 +72,22 @@ G.BOSSES = {
 };
 
 // ============ 地圖區域 AREAS ============
+// 地圖為正方形（w===h），小地圖也呈正方形
 // safe=城鎮不刷怪；reqLevel=傳送門解鎖等級需求
 G.AREAS = {
   town: {
-    name:'城鎮', w:900, h:1400, bg:'#1d2433', safe:true, level:0,
-    portals:[ {to:'forest', x:450, y:300, name:'幽暗森林'} ],
+    name:'城鎮', w:1000, h:1000, bg:'#1d2433', safe:true, level:0,
+    portals:[ {to:'forest', x:500, y:230, name:'幽暗森林'} ],
   },
   forest: {
-    name:'幽暗森林', w:1400, h:2400, bg:'#0f1f14', level:1,
-    enemies:['slime','bat','archer'], maxAlive:8, boss:'forestKing', bossAt:{x:700,y:200},
-    portals:[ {to:'town', x:700, y:2250, name:'返回城鎮'}, {to:'ruins', x:700, y:120, name:'遠古廢墟', reqLevel:6} ],
+    name:'幽暗森林', w:2000, h:2000, bg:'#0f1f14', level:1,
+    enemies:['slime','bat','archer'], maxAlive:8, boss:'forestKing', bossAt:{x:1000,y:300},
+    portals:[ {to:'town', x:1000, y:1850, name:'返回城鎮'}, {to:'ruins', x:1000, y:170, name:'遠古廢墟', reqLevel:6} ],
   },
   ruins: {
-    name:'遠古廢墟', w:1600, h:2800, bg:'#1a141f', level:7,
-    enemies:['bat','archer','brute'], maxAlive:9, boss:'ruinLord', bossAt:{x:800,y:200},
-    portals:[ {to:'forest', x:800, y:2650, name:'返回森林'} ],
+    name:'遠古廢墟', w:2200, h:2200, bg:'#1a141f', level:7,
+    enemies:['bat','archer','brute'], maxAlive:9, boss:'ruinLord', bossAt:{x:1100,y:320},
+    portals:[ {to:'forest', x:1100, y:2050, name:'返回森林'} ],
   },
 };
 
