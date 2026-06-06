@@ -1,0 +1,429 @@
+"use strict";
+// 主程式：迴圈、輸入、相機、敵人 AI、傳送門、初始化
+(function () {
+  const G = window.G;
+  const U = G.util;
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
+    canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize); resize();
+
+  let started = false, dead = false;
+  function isPaused() {
+    return !started || dead ||
+      document.querySelector(".panel.show") || document.getElementById("itemPop").classList.contains("show") ||
+      document.querySelector(".overlay.show");
+  }
+
+  // ---------- 虛擬搖桿 ----------
+  const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
+  function pStart(x, y, id) { if (isPaused()) return; joy.active = true; joy.id = id; joy.ox = x; joy.oy = y; joy.dx = 0; joy.dy = 0; joy.mag = 0; }
+  function pMove(x, y) {
+    if (!joy.active) return;
+    let dx = x - joy.ox, dy = y - joy.oy; const max = 70; const m = Math.hypot(dx, dy);
+    if (m > max) { dx = dx / m * max; dy = dy / m * max; joy.ox = x - dx; joy.oy = y - dy; }
+    joy.dx = dx; joy.dy = dy; joy.mag = Math.min(m, max) / max;
+  }
+  function pEnd() { joy.active = false; joy.mag = 0; joy.dx = 0; joy.dy = 0; }
+
+  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); const t = e.changedTouches[0]; pStart(t.clientX, t.clientY, t.identifier); }, { passive: false });
+  canvas.addEventListener("touchmove", (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joy.id) pMove(t.clientX, t.clientY); }, { passive: false });
+  canvas.addEventListener("touchend", (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joy.id) pEnd(); }, { passive: false });
+  canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); pEnd(); }, { passive: false });
+  let mouseDown = false;
+  canvas.addEventListener("mousedown", (e) => { mouseDown = true; pStart(e.clientX, e.clientY, "m"); });
+  window.addEventListener("mousemove", (e) => { if (mouseDown) pMove(e.clientX, e.clientY); });
+  window.addEventListener("mouseup", () => { mouseDown = false; pEnd(); });
+
+  // ---------- 開火 ----------
+  function fireBullets() {
+    const w = G.world, p = G.player;
+    let target = null, best = Infinity;
+    for (const e of w.enemies) { const d = U.dist(p.x, p.y, e.x, e.y); if (d < best) { best = d; target = e; } }
+    if (!target) return;
+    const baseAng = Math.atan2(target.y - p.y, target.x - p.x);
+    p.facing = baseAng;
+    const n = p.projectiles, spread = 0.15;
+    for (let i = 0; i < n; i++) {
+      const a = baseAng + (i - (n - 1) / 2) * spread;
+      w.bullets.push({ x: p.x + Math.cos(a) * p.r, y: p.y + Math.sin(a) * p.r, vx: Math.cos(a) * p.bulletSpeed, vy: Math.sin(a) * p.bulletSpeed, life: 1.4, pierce: p.pierce, hits: [] });
+    }
+  }
+  function enemyShoot(e, ang) {
+    const sp = 220;
+    G.world.foeShots.push({ x: e.x, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: e.dmg, life: 3, r: 7 });
+  }
+
+  // ---------- 更新 ----------
+  function update(dt) {
+    const w = G.world, p = G.player, area = w.area;
+    w.time += dt;
+
+    // 玩家移動
+    p.moving = joy.active && joy.mag > 0.08;
+    if (p.moving) {
+      const a = Math.atan2(joy.dy, joy.dx);
+      p.x += Math.cos(a) * p.moveSpeed * joy.mag * dt;
+      p.y += Math.sin(a) * p.moveSpeed * joy.mag * dt;
+      p.x = U.clamp(p.x, p.r, area.w - p.r);
+      p.y = U.clamp(p.y, p.r, area.h - p.r);
+    }
+    if (p.invuln > 0) p.invuln -= dt;
+    // 再生
+    if (p.procs.regen > 0) G.healPlayer(p.procs.regen * dt);
+
+    // 自動攻擊（停下且有敵人）
+    p.cooldown -= dt;
+    if (!p.moving && w.enemies.length && p.cooldown <= 0) { fireBullets(); p.cooldown = p.fireInterval; }
+
+    // 風暴之芯（傳奇）：停下時每 1.5s 落雷
+    if (p.procs.storm > 0) {
+      p.stormCd -= dt;
+      if (!p.moving && w.enemies.length && p.stormCd <= 0) {
+        p.stormCd = 1.5;
+        for (const e of w.enemies.slice()) {
+          if (U.dist(e.x, e.y, p.x, p.y) < 260) {
+            w.particles.push({ line: true, x1: e.x, y1: e.y - 60, x2: e.x, y2: e.y, life: .18, color: "#bfe6ff" });
+            G.dealDamage(e, p.dmg * 1.2, false);
+          }
+        }
+        G.shake(5, .15);
+      }
+    }
+
+    // 玩家子彈
+    for (let i = w.bullets.length - 1; i >= 0; i--) {
+      const b = w.bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+      let dead2 = b.life <= 0 || b.x < -20 || b.x > area.w + 20 || b.y < -20 || b.y > area.h + 20;
+      if (!dead2) {
+        for (const e of w.enemies) {
+          if (e.hp <= 0 || b.hits.includes(e)) continue;
+          if (U.dist(b.x, b.y, e.x, e.y) < e.r + 5) {
+            b.hits.push(e); G.burst(b.x, b.y, "#ffd166", 4);
+            G.onPlayerHit(e);
+            if (b.hits.length > b.pierce) { dead2 = true; break; }
+          }
+        }
+      }
+      if (dead2) w.bullets.splice(i, 1);
+    }
+
+    // 敵人
+    for (let i = w.enemies.length - 1; i >= 0; i--) {
+      const e = w.enemies[i];
+      if (e.hp <= 0) continue; // 等待 killEnemy 移除
+      if (e.hitFlash > 0) e.hitFlash -= dt;
+      // 減速
+      let spd = e.baseSpeed;
+      if (e.slowT > 0) { e.slowT -= dt; spd *= (1 - e.slowPct / 100); if (e.slowT <= 0) e.slowPct = 0; }
+      // 燃燒 DoT
+      if (e.burnT > 0) {
+        e.burnT -= dt; e.burnAcc = (e.burnAcc || 0) + e.burnDps * dt;
+        if (e.burnAcc >= 1) { const d = Math.floor(e.burnAcc); e.burnAcc -= d; G.dealDamage(e, d, false); }
+        if (e.hp <= 0) continue;
+      }
+      const d = U.dist(e.x, e.y, p.x, p.y);
+      const a = Math.atan2(p.y - e.y, p.x - e.x);
+      if (e.behavior === "ranged") {
+        if (d > 240) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
+        else if (d < 160) { e.x -= Math.cos(a) * spd * dt; e.y -= Math.sin(a) * spd * dt; }
+        e.fireCd -= dt; if (e.fireCd <= 0) { enemyShoot(e, a); e.fireCd = U.rand(1.6, 2.8); }
+      } else if (e.behavior === "boss") {
+        e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
+        e.fireCd -= dt;
+        if (e.fireCd <= 0) { for (let k = -1; k <= 1; k++) enemyShoot(e, a + k * 0.25); e.fireCd = 1.8; }
+      } else {
+        e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
+      }
+      // 分離
+      for (const o of w.enemies) {
+        if (o === e || o.hp <= 0) continue;
+        const dd = U.dist(e.x, e.y, o.x, o.y);
+        if (dd > 0 && dd < e.r + o.r) { const pa = Math.atan2(e.y - o.y, e.x - o.x); const push = (e.r + o.r - dd) * .5; e.x += Math.cos(pa) * push; e.y += Math.sin(pa) * push; }
+      }
+      e.x = U.clamp(e.x, e.r, area.w - e.r); e.y = U.clamp(e.y, e.r, area.h - e.r);
+      // 接觸傷害
+      e.touchCd -= dt;
+      if (d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e); e.touchCd = 0.6; }
+    }
+
+    // 敵人子彈
+    for (let i = w.foeShots.length - 1; i >= 0; i--) {
+      const s = w.foeShots[i];
+      s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+      if (s.life <= 0 || s.x < -20 || s.x > area.w + 20 || s.y < -20 || s.y > area.h + 20) { w.foeShots.splice(i, 1); continue; }
+      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null); w.foeShots.splice(i, 1); }
+    }
+
+    // 粒子
+    for (let i = w.particles.length - 1; i >= 0; i--) {
+      const pt = w.particles[i]; pt.life -= dt;
+      if (!pt.line) { pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vx *= .92; pt.vy *= .92; }
+      if (pt.life <= 0) w.particles.splice(i, 1);
+    }
+    // 浮動數字
+    for (let i = w.floats.length - 1; i >= 0; i--) {
+      const f = w.floats[i]; f.y += f.vy * dt; f.vy += 60 * dt; f.life -= dt;
+      if (f.life <= 0) w.floats.splice(i, 1);
+    }
+
+    // 刷怪
+    if (!area.safe) {
+      w.spawnTimer -= dt;
+      if (w.spawnTimer <= 0 && w.enemies.length < area.maxAlive) { G.spawnEnemy(); w.spawnTimer = U.rand(1.2, 2.6); }
+      // 接近 Boss 區域則召喚
+      if (area.boss && !w.bossSpawned && !G.save.killedBoss[area.boss]) {
+        if (U.dist(p.x, p.y, area.bossAt.x, area.bossAt.y) < 360) G.spawnBoss();
+      }
+    }
+
+    // 拾取地面道具
+    for (let i = w.grounds.length - 1; i >= 0; i--) {
+      const g = w.grounds[i]; g.age += dt; g.bob = Math.sin(g.age * 4) * 3;
+      if (U.dist(g.x, g.y, p.x, p.y) < p.r + 22) { G.addToBag(g.item); w.grounds.splice(i, 1); }
+      else if (g.age > 60) w.grounds.splice(i, 1);
+    }
+
+    // 傳送門偵測
+    updatePortalPrompt();
+
+    // 震動衰減
+    if (w.shakeT > 0) { w.shakeT -= dt; if (w.shakeT <= 0) w.shakeMag = 0; }
+
+    // HUD（HP 變動頻繁，每幀更新血條）
+    document.getElementById("hpbar").style.width = (p.hp / p.maxHp * 100) + "%";
+  }
+
+  // ---------- 傳送門 ----------
+  let nearPortal = null, portalKey = "";
+  function updatePortalPrompt() {
+    const w = G.world, p = G.player; nearPortal = null;
+    let best = 60 * 60;
+    for (const pt of w.area.portals) {
+      const dd = (pt.x - p.x) ** 2 + (pt.y - p.y) ** 2;
+      if (dd < best) { best = dd; nearPortal = pt; }
+    }
+    const el = document.getElementById("portalPrompt");
+    const locked = nearPortal && nearPortal.reqLevel && G.save.level < nearPortal.reqLevel;
+    const key = nearPortal ? (nearPortal.to + (locked ? "L" : "")) : "";
+    if (key === portalKey) return; // 狀態未變則不重建 DOM
+    portalKey = key;
+    if (nearPortal) {
+      el.style.display = "block";
+      el.innerHTML = locked
+        ? `<span class="pbtn" style="background:#555;color:#bbb;box-shadow:0 4px 0 #333">🔒 ${nearPortal.name}（需 Lv ${nearPortal.reqLevel}）</span>`
+        : `<span class="pbtn" id="goPortal">➤ 前往 ${nearPortal.name}</span>`;
+      if (!locked) document.getElementById("goPortal").onclick = () => travel(nearPortal);
+    } else el.style.display = "none";
+  }
+  function travel(pt) {
+    const from = G.world.areaId;
+    G.enterArea(pt.to, from);
+    G.toast("已抵達 " + G.AREAS[pt.to].name);
+  }
+
+  // ---------- 渲染 ----------
+  function render() {
+    const w = G.world, p = G.player, area = w.area;
+    if (!area) return;
+    // 相機
+    w.cam.x = U.clamp(p.x - W / 2, 0, Math.max(0, area.w - W));
+    w.cam.y = U.clamp(p.y - H / 2, 0, Math.max(0, area.h - H));
+    const cx = w.cam.x, cy = w.cam.y;
+
+    ctx.save();
+    if (w.shakeMag > 0) ctx.translate(U.rand(-w.shakeMag, w.shakeMag), U.rand(-w.shakeMag, w.shakeMag));
+
+    // 背景
+    ctx.fillStyle = area.bg; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(255,255,255,.04)"; ctx.lineWidth = 1; const gs = 48;
+    const sx0 = -((cx) % gs), sy0 = -((cy) % gs);
+    for (let x = sx0; x < W; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = sy0; y < H; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    // 地圖邊界
+    ctx.strokeStyle = "rgba(120,100,180,.5)"; ctx.lineWidth = 4;
+    ctx.strokeRect(-cx, -cy, area.w, area.h);
+
+    // 傳送門
+    for (const pt of area.portals) {
+      const x = pt.x - cx, y = pt.y - cy;
+      const locked = pt.reqLevel && G.save.level < pt.reqLevel;
+      ctx.save(); ctx.translate(x, y);
+      ctx.globalAlpha = .85;
+      ctx.fillStyle = locked ? "#555" : "#3ad0ff";
+      ctx.beginPath(); ctx.ellipse(0, 0, 30, 38, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = .35; ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.ellipse(0, 0, 18, 24, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center";
+      ctx.fillText((locked ? "🔒 " : "") + pt.name, 0, -46);
+      ctx.restore();
+    }
+
+    // 地面道具
+    for (const g of w.grounds) {
+      const x = g.x - cx, y = g.y - cy + g.bob;
+      const r = G.RARITY[g.item.rarity];
+      ctx.fillStyle = r.color; ctx.globalAlpha = .25;
+      ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.font = "20px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(g.item.ic, x, y);
+      ctx.textBaseline = "alphabetic";
+    }
+
+    // 粒子（線：閃電）
+    for (const pt of w.particles) {
+      if (pt.line) {
+        ctx.globalAlpha = U.clamp(pt.life * 6, 0, 1); ctx.strokeStyle = pt.color; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(pt.x1 - cx, pt.y1 - cy); ctx.lineTo(pt.x2 - cx, pt.y2 - cy); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // 敵人子彈
+    for (const s of w.foeShots) {
+      ctx.fillStyle = "#ff5470"; ctx.beginPath(); ctx.arc(s.x - cx, s.y - cy, s.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // 敵人
+    for (const e of w.enemies) {
+      if (e.hp <= 0) continue;
+      const x = e.x - cx, y = e.y - cy;
+      ctx.fillStyle = e.hitFlash > 0 ? "#fff" : e.color;
+      ctx.beginPath(); ctx.arc(x, y, e.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 2; ctx.stroke();
+      if (e.slowT > 0) { ctx.strokeStyle = "#7fdfff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, e.r + 3, 0, Math.PI * 2); ctx.stroke(); }
+      if (e.burnT > 0) { ctx.fillStyle = "rgba(255,120,40,.5)"; ctx.beginPath(); ctx.arc(x, y - e.r, 3, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(x - e.r * .3, y - e.r * .2, e.r * .16, 0, Math.PI * 2); ctx.arc(x + e.r * .3, y - e.r * .2, e.r * .16, 0, Math.PI * 2); ctx.fill();
+      if (e.hp < e.maxHp && !e.boss) {
+        const bw = e.r * 2; ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(x - bw / 2, y - e.r - 8, bw, 4);
+        ctx.fillStyle = "#7af5d0"; ctx.fillRect(x - bw / 2, y - e.r - 8, bw * (e.hp / e.maxHp), 4);
+      }
+    }
+
+    // 玩家子彈
+    for (const b of w.bullets) {
+      const x = b.x - cx, y = b.y - cy; const ang = Math.atan2(b.vy, b.vx);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+      ctx.fillStyle = "#ffe08a"; ctx.fillRect(-9, -2, 18, 4);
+      ctx.fillStyle = "#fff6c8"; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(4, -4); ctx.lineTo(4, 4); ctx.fill();
+      ctx.restore();
+    }
+
+    // 玩家
+    const px = p.x - cx, py = p.y - cy;
+    ctx.save(); ctx.translate(px, py);
+    ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(0, p.r * .75, p.r * .9, p.r * .4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = (p.invuln > 0 && Math.floor(p.invuln * 20) % 2) ? "#fff" : "#39d98a";
+    ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#1d7a52"; ctx.lineWidth = 3; ctx.stroke();
+    ctx.rotate(p.facing); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.r + 2, 0, 8, -Math.PI / 2.2, Math.PI / 2.2); ctx.stroke();
+    ctx.restore();
+
+    // 圓形粒子
+    for (const pt of w.particles) {
+      if (pt.line) continue;
+      ctx.globalAlpha = U.clamp(pt.life * 2, 0, 1); ctx.fillStyle = pt.color;
+      ctx.beginPath(); ctx.arc(pt.x - cx, pt.y - cy, pt.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 浮動傷害數字
+    ctx.textAlign = "center";
+    for (const f of w.floats) {
+      ctx.globalAlpha = U.clamp(f.life * 1.6, 0, 1);
+      ctx.fillStyle = f.crit ? "#ffd166" : "#fff";
+      ctx.font = (f.crit ? "800 " : "700 ") + (f.crit ? 22 : 16) + "px system-ui";
+      ctx.fillText(f.val, f.x - cx, f.y - cy);
+    }
+    ctx.globalAlpha = 1; ctx.textAlign = "left";
+
+    ctx.restore(); // shake
+
+    // 搖桿（螢幕座標）
+    if (joy.active) {
+      ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 48, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = .75; ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Boss 血條（螢幕頂部）
+    if (w.boss && w.boss.hp > 0) {
+      const bw = W - 60, bx = 30, by = 96;
+      ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx, by, bw, 14);
+      ctx.fillStyle = "#e0457a"; ctx.fillRect(bx, by, bw * (w.boss.hp / w.boss.maxHp), 14);
+      ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 14);
+      ctx.fillStyle = "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
+      ctx.fillText("👑 " + w.boss.name, W / 2, by - 4); ctx.textAlign = "left";
+    }
+  }
+
+  // ---------- 死亡 ----------
+  G.onPlayerDeath = function () {
+    dead = true;
+    document.getElementById("deathScreen").classList.add("show");
+  };
+  function respawn() {
+    dead = false;
+    document.getElementById("deathScreen").classList.remove("show");
+    G.player.hp = G.player.maxHp; G.player.invuln = 1;
+    G.enterArea("town");
+  }
+
+  // ---------- 迴圈 ----------
+  let last = 0;
+  function loop(now) {
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    if (!isPaused()) update(dt);
+    if (started) render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 初始化 ----------
+  function beginGame() {
+    G.computeStats();
+    if (G.player.hp === undefined) G.player.hp = G.player.maxHp;
+    started = true; dead = false;
+    document.getElementById("startScreen").classList.remove("show");
+    G.enterArea(G.save.area || "town");
+    G.refreshHud();
+    last = performance.now();
+  }
+
+  function wire() {
+    document.getElementById("bagBtn").onclick = G.openBag;
+    document.getElementById("talBtn").onclick = G.openTalents;
+    document.getElementById("bagClose").onclick = G.closeBag;
+    document.getElementById("talClose").onclick = G.closeTalents;
+    document.getElementById("startBtn").onclick = beginGame;
+    document.getElementById("respawnBtn").onclick = respawn;
+    document.getElementById("resetSave").onclick = () => {
+      if (confirm("確定要清除所有進度，重新開始嗎？")) { G.wipeSave(); location.reload(); }
+    };
+  }
+
+  // 啟動
+  G.loadSave();
+  G.computeStats();
+  wire();
+  // 開始畫面文字依存檔狀態
+  const hasProgress = G.save.level > 1 || G.save.bag.length > 0 || (G.save.equipped.weapon);
+  document.getElementById("startBtn").textContent = hasProgress ? "繼續冒險" : "開始冒險";
+  document.getElementById("startSub").textContent = hasProgress
+    ? ("上次進度：Lv " + G.save.level + " · " + (G.AREAS[G.save.area] ? G.AREAS[G.save.area].name : "城鎮"))
+    : "拖曳移動，停下自動射箭。打怪掉裝，靠詞條特效打造你的 Build！";
+  requestAnimationFrame(loop);
+
+})();

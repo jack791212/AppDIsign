@@ -1,0 +1,183 @@
+"use strict";
+// UI 層：HUD、背包、裝備、天賦、道具彈窗、提示
+(function () {
+  const G = window.G;
+  const $ = (id) => document.getElementById(id);
+  const BAG_CAP = 40;
+
+  // ---------- Toast ----------
+  G.toast = function (msg) {
+    const box = $("toasts");
+    const el = document.createElement("div");
+    el.className = "toast"; el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 300); }, 1600);
+    while (box.children.length > 4) box.firstChild.remove();
+  };
+
+  // ---------- HUD ----------
+  G.refreshHud = function () {
+    const s = G.save, p = G.player, w = G.world;
+    $("areaName").textContent = (w.area ? w.area.name : "");
+    $("lvPill").textContent = "Lv " + s.level;
+    $("coins").textContent = "🪙 " + s.gold;
+    $("hpbar").style.width = (p.maxHp ? (p.hp / p.maxHp * 100) : 0) + "%";
+    $("xpbar").style.width = (s.xp / G.xpForLevel(s.level) * 100) + "%";
+    const tp = $("talBadge");
+    if (s.talentPts > 0) { tp.style.display = "flex"; tp.textContent = s.talentPts; } else tp.style.display = "none";
+  };
+
+  // ---------- 背包操作 ----------
+  G.addToBag = function (item) {
+    if (G.save.bag.length >= BAG_CAP) {
+      G.save.gold += G.RARITY[item.rarity].sell;
+      G.toast("背包已滿，自動賣出 +🪙" + G.RARITY[item.rarity].sell);
+      G.persist(); G.refreshHud(); return;
+    }
+    G.save.bag.push(item);
+    const r = G.RARITY[item.rarity];
+    G.toast("拾取：" + item.baseName + "（" + r.name + "）");
+    G.persist();
+    const badge = $("bagBadge"); badge.style.display = "flex"; badge.textContent = G.save.bag.length;
+  };
+
+  G.equipItem = function (item) {
+    const s = G.save;
+    const idx = s.bag.indexOf(item);
+    if (idx >= 0) s.bag.splice(idx, 1);
+    const old = s.equipped[item.slot];
+    s.equipped[item.slot] = item;
+    if (old) s.bag.push(old);
+    G.computeStats(); G.persist(); G.refreshHud();
+    renderBag();
+  };
+  G.unequip = function (slot) {
+    const s = G.save;
+    const it = s.equipped[slot];
+    if (!it) return;
+    if (s.bag.length >= BAG_CAP) { G.toast("背包已滿"); return; }
+    s.bag.push(it); s.equipped[slot] = null;
+    G.computeStats(); G.persist(); G.refreshHud();
+    renderBag();
+  };
+  G.sellItem = function (item) {
+    const s = G.save;
+    const idx = s.bag.indexOf(item);
+    if (idx >= 0) s.bag.splice(idx, 1);
+    s.gold += G.RARITY[item.rarity].sell;
+    G.toast("賣出 +🪙" + G.RARITY[item.rarity].sell);
+    G.persist(); G.refreshHud(); renderBag();
+  };
+
+  // ---------- 背包面板 ----------
+  function slotCellHtml(item) {
+    if (!item) return "";
+    const r = G.RARITY[item.rarity];
+    return `<div class="ic">${item.ic}</div><div class="nm t-${r.cls}">${item.baseName}</div>`;
+  }
+  function renderBag() {
+    // 裝備欄
+    const row = $("equipRow"); row.innerHTML = "";
+    for (const slot of G.SLOTS) {
+      const it = G.save.equipped[slot];
+      const info = G.SLOT_INFO[slot];
+      const div = document.createElement("div");
+      div.className = "eqslot" + (it ? " r-" + G.RARITY[it.rarity].cls : "");
+      if (it) div.innerHTML = `<div class="ic">${it.ic}</div><div class="nm t-${G.RARITY[it.rarity].cls}">${it.baseName}</div>`;
+      else div.innerHTML = `<div class="ic" style="opacity:.4">${info.ic}</div><div class="lbl">${info.name}</div>`;
+      if (it) div.onclick = () => G.openItem(it, true);
+      row.appendChild(div);
+    }
+    // 背包格
+    const grid = $("bagGrid"); grid.innerHTML = "";
+    const bag = G.save.bag.slice().sort((a, b) => G.itemScore(b) - G.itemScore(a));
+    if (bag.length === 0) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b6480;padding:30px 0;font-size:14px">背包是空的<br>去打怪掉裝吧！</div>`;
+    }
+    for (const it of bag) {
+      const r = G.RARITY[it.rarity];
+      const div = document.createElement("div");
+      div.className = "itemcell r-" + r.cls;
+      div.innerHTML = `<div class="ic">${it.ic}</div><div class="nm t-${r.cls}">${it.baseName}</div>`;
+      div.onclick = () => G.openItem(it, false);
+      grid.appendChild(div);
+    }
+    const goldEl = $("bagGold"); if (goldEl) goldEl.textContent = "🪙 " + G.save.gold;
+    const badge = $("bagBadge");
+    if (G.save.bag.length > 0) { badge.style.display = "flex"; badge.textContent = G.save.bag.length; }
+    else badge.style.display = "none";
+  }
+  G.renderBag = renderBag;
+
+  G.openBag = function () { renderBag(); $("bagPanel").classList.add("show"); };
+  G.closeBag = function () { $("bagPanel").classList.remove("show"); };
+
+  // ---------- 道具彈窗 ----------
+  G.openItem = function (item, equipped) {
+    const r = G.RARITY[item.rarity];
+    const card = $("itemCard");
+    let aff = "";
+    for (const af of item.affixes) {
+      const info = G.affixText(af);
+      aff += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`;
+    }
+    if (item.affixes.length === 0) aff = `<div class="aff" style="color:#8a839e">（無特殊詞條）</div>`;
+    // 與目前裝備比較提示
+    let cmp = "";
+    if (!equipped) {
+      const cur = G.save.equipped[item.slot];
+      const diff = G.itemScore(item) - G.itemScore(cur);
+      cmp = `<div style="font-size:12px;margin-top:8px;color:${diff >= 0 ? "#7af5d0" : "#ff9bb0"}">${diff >= 0 ? "▲ 評分較高" : "▼ 評分較低"}（目前 ${G.SLOT_INFO[item.slot].name}：${cur ? cur.baseName : "無"}）</div>`;
+    }
+    card.innerHTML =
+      `<div class="iname t-${r.cls}">${item.ic} ${item.baseName}</div>` +
+      `<div class="ibase">${r.name} · ${G.SLOT_INFO[item.slot].name} · iLv ${item.ilvl}</div>` +
+      aff + cmp +
+      `<div class="acts">` +
+      (equipped
+        ? `<button class="bSell" id="popUnequip">卸下</button>`
+        : `<button class="bEquip" id="popEquip">裝備</button><button class="bSell" id="popSell">賣 🪙${r.sell}</button>`) +
+      `<button class="bClose" id="popClose">關閉</button>` +
+      `</div>`;
+    $("itemPop").classList.add("show");
+    if (equipped) {
+      $("popUnequip").onclick = () => { G.unequip(item.slot); G.closeItem(); };
+    } else {
+      $("popEquip").onclick = () => { G.equipItem(item); G.closeItem(); };
+      $("popSell").onclick = () => { G.sellItem(item); G.closeItem(); };
+    }
+    $("popClose").onclick = G.closeItem;
+  };
+  G.closeItem = function () { $("itemPop").classList.remove("show"); };
+
+  // ---------- 天賦面板 ----------
+  function renderTalents() {
+    $("talPts").textContent = "可用天賦點：" + G.save.talentPts;
+    const cols = $("talCols"); cols.innerHTML = "";
+    for (const bid in G.TALENTS) {
+      const branch = G.TALENTS[bid];
+      const col = document.createElement("div");
+      col.className = "talcol";
+      col.innerHTML = `<h3 style="background:${branch.color}33;color:${branch.color}">${branch.name}</h3>`;
+      for (const node of branch.nodes) {
+        const rank = G.save.talents[node.id] || 0;
+        const maxed = rank >= node.max;
+        const el = document.createElement("div");
+        el.className = "talnode" + (maxed ? " maxed" : "");
+        el.innerHTML = `<div class="tn">${node.name}</div><div class="td">${node.desc} +${node.per}/級</div><div class="rank">${rank}/${node.max}</div>`;
+        el.onclick = () => {
+          if (maxed) { G.toast("已達上限"); return; }
+          if (G.save.talentPts <= 0) { G.toast("沒有可用天賦點"); return; }
+          G.save.talents[node.id] = rank + 1; G.save.talentPts--;
+          G.computeStats(); G.persist(); G.refreshHud(); renderTalents();
+        };
+        col.appendChild(el);
+      }
+      cols.appendChild(col);
+    }
+  }
+  G.renderTalents = renderTalents;
+  G.openTalents = function () { renderTalents(); $("talPanel").classList.add("show"); };
+  G.closeTalents = function () { $("talPanel").classList.remove("show"); };
+
+})();
