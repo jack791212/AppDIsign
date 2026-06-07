@@ -30,6 +30,13 @@
 
   // ---------- 背包操作 ----------
   G.addToBag = function (item) {
+    // 對應裝備欄位為空時，自動穿上
+    if (!G.save.equipped[item.slot]) {
+      G.save.equipped[item.slot] = item;
+      G.computeStats(); G.persist(); G.refreshHud();
+      G.toast("自動裝備：" + item.baseName + "（" + G.RARITY[item.rarity].name + "）");
+      return;
+    }
     if (G.save.bag.length >= BAG_CAP) {
       G.save.gold += G.RARITY[item.rarity].sell;
       G.toast("背包已滿，自動賣出 +🪙" + G.RARITY[item.rarity].sell);
