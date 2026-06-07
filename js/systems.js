@@ -247,15 +247,25 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.summonTimer = 1;
+    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.extraPortals = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
+    // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
+    if (areaId === "town") {
+      if (entryPortalFrom && G.AREAS[entryPortalFrom] && !G.AREAS[entryPortalFrom].safe) G.save.recallReturn = entryPortalFrom;
+      const ret = G.save.recallReturn;
+      if (ret && G.AREAS[ret] && !G.AREAS[ret].safe) {
+        w.extraPortals.push({ to: ret, x: 660, y: 760, name: "回歸 " + G.AREAS[ret].name });
+      }
+    } else {
+      G.save.recallReturn = areaId; // 記錄目前所在戰鬥區，回城後可一鍵傳回
+    }
     G.save.area = areaId; G.persist();
     // 玩家出生點：優先放在「返回來源」的傳送門附近，否則地圖底部中央
     let sx = area.w / 2, sy = area.h - 160;

@@ -77,6 +77,8 @@
   }
 
   const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
+  let npcBtnRect = null; // NPC 頭上按鈕（畫布座標）
+  function hitNpcBtn(lx, ly) { return npcBtnRect && lx >= npcBtnRect.x && lx <= npcBtnRect.x + npcBtnRect.w && ly >= npcBtnRect.y && ly <= npcBtnRect.y + npcBtnRect.h; }
   function moveZoneTop() { return H * 0.8; } // 只有畫面下方 20% 是移動控制區
   function toLocalX(x) { return x - (window.innerWidth - W) / 2; } // 桌機畫面置中時換算為畫布座標
   function pStart(x, y, id) {
@@ -94,12 +96,12 @@
   }
   function pEnd() { joy.active = false; joy.mag = 0; joy.dx = 0; joy.dy = 0; }
 
-  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); const t = e.changedTouches[0]; pStart(t.clientX, t.clientY, t.identifier); }, { passive: false });
+  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); const t = e.changedTouches[0]; if (!isPaused() && hitNpcBtn(toLocalX(t.clientX), t.clientY)) { G.openShop(); return; } pStart(t.clientX, t.clientY, t.identifier); }, { passive: false });
   canvas.addEventListener("touchmove", (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joy.id) pMove(t.clientX, t.clientY); }, { passive: false });
   canvas.addEventListener("touchend", (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joy.id) pEnd(); }, { passive: false });
   canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); pEnd(); }, { passive: false });
   let mouseDown = false;
-  canvas.addEventListener("mousedown", (e) => { mouseDown = true; pStart(e.clientX, e.clientY, "m"); });
+  canvas.addEventListener("mousedown", (e) => { if (!isPaused() && hitNpcBtn(toLocalX(e.clientX), e.clientY)) { G.openShop(); return; } mouseDown = true; pStart(e.clientX, e.clientY, "m"); });
   window.addEventListener("mousemove", (e) => { if (mouseDown) pMove(e.clientX, e.clientY); });
   window.addEventListener("mouseup", () => { mouseDown = false; pEnd(); });
 
@@ -590,11 +592,12 @@
   }
 
   // ---------- 傳送門 ----------
+  function getPortals() { return G.world.area.portals.concat(G.world.extraPortals || []); }
   let nearPortal = null, portalKey = "";
   function updatePortalPrompt() {
     const w = G.world, p = G.player; nearPortal = null;
     let best = 60 * 60;
-    for (const pt of w.area.portals) {
+    for (const pt of getPortals()) {
       const dd = (pt.x - p.x) ** 2 + (pt.y - p.y) ** 2;
       if (dd < best) { best = dd; nearPortal = pt; }
     }
@@ -640,7 +643,7 @@
     ctx.strokeRect(-cx, -cy, area.w, area.h);
 
     // 傳送門
-    for (const pt of area.portals) {
+    for (const pt of getPortals()) {
       const x = pt.x - cx, y = pt.y - cy;
       const locked = pt.reqLevel && G.save.level < pt.reqLevel;
       ctx.save(); ctx.translate(x, y);
@@ -652,6 +655,26 @@
       ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center";
       ctx.fillText((locked ? "🔒 " : "") + pt.name, 0, -46);
       ctx.restore();
+    }
+
+    // 城鎮 NPC（鐵匠）：靠近頭上出現按鈕
+    npcBtnRect = null;
+    if (area.npc) {
+      const npc = area.npc, x = npc.x - cx, y = npc.y - cy;
+      ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(x, y + 16, 16, 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "32px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(npc.ic || "🧙", x, y);
+      ctx.font = "700 12px system-ui"; ctx.fillStyle = "#ffd166"; ctx.fillText(npc.name, x, y - 26);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+      if (U.dist(p.x, p.y, npc.x, npc.y) < 95) {
+        const bw = 104, bh = 32, bx = x - bw / 2, by = y - 64;
+        ctx.fillStyle = "#7c4dff"; ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = "#b89cff"; ctx.lineWidth = 2; ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = "#fff"; ctx.font = "700 14px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("⚒️ 強化裝備", x, by + bh / 2);
+        ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+        npcBtnRect = { x: bx, y: by, w: bw, h: bh };
+      }
     }
 
     // 召喚祭壇（六芒星）
@@ -891,7 +914,7 @@
     ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.lineWidth = 1; ctx.strokeRect(mmX, mmY, mmW, mmH);
     ctx.beginPath(); ctx.rect(mmX, mmY, mmW, mmH); ctx.clip();
     const sx = (v) => mmX + (v / area.w) * mmW, sy = (v) => mmY + (v / area.h) * mmH;
-    for (const pt of area.portals) {
+    for (const pt of getPortals()) {
       const locked = pt.reqLevel && G.save.level < pt.reqLevel;
       ctx.fillStyle = locked ? "#888" : "#3ad0ff";
       ctx.fillRect(sx(pt.x) - 3, sy(pt.y) - 3, 6, 6);

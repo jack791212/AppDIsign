@@ -25,7 +25,7 @@
     $("xpbar").style.width = (s.xp / G.xpForLevel(s.level) * 100) + "%";
     const tp = $("talBadge");
     if (s.talentPts > 0) { tp.style.display = "flex"; tp.textContent = s.talentPts; } else tp.style.display = "none";
-    const sb = $("shopBtn"); if (sb) sb.style.display = (w.area && w.area.safe) ? "flex" : "none";
+    const sb = $("shopBtn"); if (sb) sb.style.display = "none"; // 商店改由城鎮 NPC 開啟
   };
 
   // ---------- 背包操作 ----------

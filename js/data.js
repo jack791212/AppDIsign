@@ -104,6 +104,7 @@ G.BOSSES = {
 G.AREAS = {
   town: {
     name:'城鎮', w:1000, h:1000, bg:'#1d2433', safe:true, level:0,
+    npc:{ x:360, y:760, name:'鐵匠', ic:'🔨' },
     portals:[ {to:'forest', x:500, y:230, name:'幽暗森林'} ],
   },
   forest: {
