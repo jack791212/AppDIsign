@@ -85,14 +85,14 @@
     // 再生
     if (p.procs.regen > 0) G.healPlayer(p.procs.regen * dt);
 
-    // 自動攻擊（停下且有敵人）
+    // 自動攻擊（持續，移動中也會射箭，朝最近敵人）
     p.cooldown -= dt;
-    if (!p.moving && w.enemies.length && p.cooldown <= 0) { fireBullets(); p.cooldown = p.fireInterval; }
+    if (w.enemies.length && p.cooldown <= 0) { fireBullets(); p.cooldown = p.fireInterval; }
 
-    // 風暴之芯（傳奇）：停下時每 1.5s 落雷
+    // 風暴之芯（傳奇）：每 1.5s 落雷
     if (p.procs.storm > 0) {
       p.stormCd -= dt;
-      if (!p.moving && w.enemies.length && p.stormCd <= 0) {
+      if (w.enemies.length && p.stormCd <= 0) {
         p.stormCd = 1.5;
         for (const e of w.enemies.slice()) {
           if (U.dist(e.x, e.y, p.x, p.y) < 260) {
@@ -500,7 +500,7 @@
   document.getElementById("startBtn").textContent = hasProgress ? "繼續冒險" : "開始冒險";
   document.getElementById("startSub").textContent = hasProgress
     ? ("上次進度：Lv " + G.save.level + " · " + (G.AREAS[G.save.area] ? G.AREAS[G.save.area].name : "城鎮"))
-    : "拖曳移動，停下自動射箭。打怪掉裝，靠詞條特效打造你的 Build！";
+    : "拖曳移動、自動射箭。專注走位閃避，打怪掉裝，靠詞條特效打造你的 Build！";
   requestAnimationFrame(loop);
 
 })();

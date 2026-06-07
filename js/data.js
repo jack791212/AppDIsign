@@ -29,7 +29,7 @@ G.AFFIXES = {
 
 // 傳奇專屬特效（只在 legend 裝備出現，威力更強）
 G.LEGEND_AFFIXES = {
-  storm:   { id:'storm',   name:'⚡風暴之芯', kind:'proc', roll:[100,100], fmt:_=>`停止移動時，每 1.5 秒對周圍敵人降下落雷` },
+  storm:   { id:'storm',   name:'⚡風暴之芯', kind:'proc', roll:[100,100], fmt:_=>`每 1.5 秒對周圍敵人降下落雷` },
   vampire: { id:'vampire', name:'🩸嗜血',     kind:'proc', roll:[12,12],   fmt:_=>`吸血 12%，且擊殺時回復 5% 最大生命` },
   glass:   { id:'glass',   name:'💎玻璃大炮', kind:'proc', roll:[60,60],   fmt:_=>`攻擊 +60%，但最大生命 -25%` },
   twin:    { id:'twin',    name:'🏹雙生箭',   kind:'proc', roll:[1,1],     fmt:_=>`額外 +2 投射物，但攻速 -15%` },
