@@ -138,8 +138,8 @@
   // 法書：召喚史萊姆
   function spawnMinion() {
     const p = G.player;
-    const hp = 30 + G.save.level * 6;
-    G.world.minions.push({ x: p.x + U.rand(-30, 30), y: p.y + U.rand(-30, 30), r: 11, hp, maxHp: hp, atkCd: 0 });
+    const hp = 60 + G.save.level * 14;
+    G.world.minions.push({ x: p.x + U.rand(-30, 30), y: p.y + U.rand(-30, 30), r: 12, hp, maxHp: hp, atkCd: 0 });
   }
   function enemyShoot(e, ang) {
     const sp = 220;
@@ -434,9 +434,10 @@
       const tgt = nearestEnemy(m.x, m.y);
       if (tgt) {
         const a = Math.atan2(tgt.y - m.y, tgt.x - m.x), d = U.dist(m.x, m.y, tgt.x, tgt.y);
-        if (d > m.r + tgt.r + 2) { m.x += Math.cos(a) * 160 * dt; m.y += Math.sin(a) * 160 * dt; }
+        if (d > m.r + tgt.r + 2) { m.x += Math.cos(a) * 185 * dt; m.y += Math.sin(a) * 185 * dt; }
         m.atkCd -= dt;
-        if (d < m.r + tgt.r + 5 && m.atkCd <= 0) { G.dealDamage(tgt, p.dmg * 0.6, false); m.atkCd = 0.7; m.hp -= tgt.dmg * 0.5; }
+        // 召喚物造成傷害並套用玩家天賦/特效（暴擊、燃燒、連鎖、吸血…）
+        if (d < m.r + tgt.r + 5 && m.atkCd <= 0) { G.onPlayerHit(tgt, 0.85); m.atkCd = 0.45; m.hp -= tgt.dmg * 0.3; }
       } else {
         const a = Math.atan2(p.y - m.y, p.x - m.x), d = U.dist(m.x, m.y, p.x, p.y);
         if (d > 60) { m.x += Math.cos(a) * 160 * dt; m.y += Math.sin(a) * 160 * dt; }
@@ -474,13 +475,25 @@
       if (f.life <= 0) w.floats.splice(i, 1);
     }
 
-    // 刷怪
+    // 刷怪（密度提升：落後較多時一次補兩隻）
     if (!area.safe) {
       w.spawnTimer -= dt;
-      if (w.spawnTimer <= 0 && w.enemies.length < area.maxAlive) { G.spawnEnemy(); w.spawnTimer = U.rand(1.2, 2.6); }
-      // 接近 Boss 區域則召喚
-      if (area.boss && !w.bossSpawned && !G.save.killedBoss[area.boss]) {
-        if (U.dist(p.x, p.y, area.bossAt.x, area.bossAt.y) < 360) G.spawnBoss();
+      if (w.spawnTimer <= 0 && w.enemies.length < area.maxAlive) {
+        G.spawnEnemy();
+        if (w.enemies.length < area.maxAlive - 2) G.spawnEnemy();
+        w.spawnTimer = U.rand(0.5, 1.1);
+      }
+      // 六芒星祭壇：站入填滿進度 → 延遲 2 秒後在祭壇召喚 Boss
+      const al = w.altar;
+      if (al && !w.bossSpawned) {
+        if (al.summoning) {
+          al.delay -= dt;
+          if (al.delay <= 0) { G.spawnBoss(al.x, al.y); w.altar = null; }
+        } else {
+          const inside = U.dist(p.x, p.y, al.x, al.y) < al.r;
+          al.progress = U.clamp(al.progress + (inside ? dt / 3.5 : -dt * 0.5), 0, 1);
+          if (al.progress >= 1) { al.summoning = true; al.delay = 2.0; G.toast("⚠ 祭壇啟動！Boss 即將降臨…"); }
+        }
       }
     }
 
@@ -564,6 +577,36 @@
       ctx.globalAlpha = 1; ctx.fillStyle = "#fff"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center";
       ctx.fillText((locked ? "🔒 " : "") + pt.name, 0, -46);
       ctx.restore();
+    }
+
+    // 召喚祭壇（六芒星）
+    if (w.altar) {
+      const al = w.altar, x = al.x - cx, y = al.y - cy;
+      const flash = al.summoning && Math.sin(performance.now() / 70) > 0;
+      ctx.save(); ctx.translate(x, y);
+      // 地面光暈
+      ctx.globalAlpha = al.summoning ? .3 : (.1 + al.progress * .2);
+      ctx.fillStyle = flash ? "#ff3030" : "#b48cff";
+      ctx.beginPath(); ctx.arc(0, 0, al.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      // 外圈
+      ctx.strokeStyle = flash ? "#ff4040" : "rgba(190,150,255,.7)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, al.r, 0, Math.PI * 2); ctx.stroke();
+      // 六芒星（兩個三角形）
+      ctx.strokeStyle = flash ? "#ff6060" : "rgba(210,180,255,.6)"; ctx.lineWidth = 2;
+      for (let s = 0; s < 2; s++) {
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) { const a = -Math.PI / 2 + s * Math.PI / 3 + i * Math.PI * 2 / 3; const px = Math.cos(a) * al.r * 0.78, py = Math.sin(a) * al.r * 0.78; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+        ctx.closePath(); ctx.stroke();
+      }
+      // 進度環
+      if (!al.summoning) {
+        ctx.strokeStyle = "#7af5d0"; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(0, 0, al.r + 7, -Math.PI / 2, -Math.PI / 2 + al.progress * Math.PI * 2); ctx.stroke();
+      }
+      // 提示文字
+      ctx.fillStyle = "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
+      ctx.fillText(al.summoning ? "Boss 降臨中…" : (al.progress > 0 ? Math.floor(al.progress * 100) + "%" : "站入召喚 Boss"), 0, -al.r - 14);
+      ctx.textAlign = "left"; ctx.restore();
     }
 
     // 地面道具
@@ -748,6 +791,7 @@
       ctx.fillStyle = locked ? "#888" : "#3ad0ff";
       ctx.fillRect(sx(pt.x) - 3, sy(pt.y) - 3, 6, 6);
     }
+    if (w.altar) { ctx.fillStyle = w.altar.summoning ? "#ff3030" : "#c79bff"; ctx.font = "9px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("✦", sx(w.altar.x), sy(w.altar.y)); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; }
     for (const g of w.grounds) {
       if (g.item.rarity !== "rare" && g.item.rarity !== "legend") continue;
       ctx.fillStyle = G.RARITY[g.item.rarity].color;

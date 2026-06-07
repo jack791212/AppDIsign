@@ -194,7 +194,7 @@
   };
 
   // ================= 等級 / 經驗 =================
-  G.xpForLevel = (lv) => Math.floor(18 * Math.pow(lv, 1.55)) + 12;
+  G.xpForLevel = (lv) => Math.floor(13 * Math.pow(lv, 1.42)) + 16;
   G.gainXp = function (n) {
     const s = G.save;
     s.xp += n;
@@ -215,7 +215,7 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
@@ -233,9 +233,21 @@
     }
     G.player.x = clamp(sx, 40, area.w - 40);
     G.player.y = clamp(sy, 40, area.h - 40);
+    // 召喚祭壇（六芒星）：戰鬥區且 Boss 未擊敗時，隨機放置且不蓋到傳送門/出生點
+    w.altar = null;
+    if (!area.safe && area.boss && !G.save.killedBoss[area.boss]) {
+      const m = 230; let ax = area.w / 2, ay = area.h / 2;
+      for (let t = 0; t < 50; t++) {
+        ax = rand(m, area.w - m); ay = rand(m, area.h - m);
+        let ok = dist(ax, ay, G.player.x, G.player.y) > 260;
+        if (ok) for (const pt of area.portals) if (dist(ax, ay, pt.x, pt.y) < 340) { ok = false; break; }
+        if (ok) break;
+      }
+      w.altar = { x: ax, y: ay, r: 85, progress: 0, summoning: false, delay: 0 };
+    }
     if (!area.safe) {
-      // 預先生成幾隻
-      for (let i = 0; i < Math.min(4, area.maxAlive); i++) spawnEnemy(true);
+      const n = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive);
+      for (let i = 0; i < n; i++) spawnEnemy(true);
     }
     if (G.refreshHud) G.refreshHud();
   };
@@ -262,14 +274,15 @@
   }
   G.spawnEnemy = spawnEnemy;
 
-  function spawnBoss() {
+  function spawnBoss(px, py) {
     const w = G.world, area = w.area;
     if (!area.boss || w.bossSpawned) return;
     if (G.save.killedBoss[area.boss]) return;
     const t = G.BOSSES[area.boss];
     const lvScale = 1 + area.level * 0.1;
+    const bx = (px != null) ? px : area.bossAt.x, by = (py != null) ? py : area.bossAt.y;
     const b = {
-      typeId: area.boss, name: t.name, x: area.bossAt.x, y: area.bossAt.y, r: t.r, color: t.color,
+      typeId: area.boss, name: t.name, x: bx, y: by, r: t.r, color: t.color,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: t.dmg, speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
       behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: true,
@@ -304,10 +317,11 @@
     return dmg;
   };
 
-  // 玩家箭命中敵人 -> 計算暴擊 + 套用所有特效
-  G.onPlayerHit = function (e) {
+  // 玩家箭命中敵人 -> 計算暴擊 + 套用所有特效（mult 可調整傷害，供召喚物等共用）
+  G.onPlayerHit = function (e, mult) {
     const p = G.player, w = G.world, procs = p.procs;
-    let dmg = p.dmg;
+    mult = mult || 1;
+    let dmg = p.dmg * mult;
     const isCrit = Math.random() * 100 < p.crit;
     if (isCrit) dmg *= (1 + p.critDmg / 100);
     const dealt = G.dealDamage(e, dmg, isCrit);

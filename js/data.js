@@ -105,27 +105,27 @@ G.AREAS = {
   },
   forest: {
     name:'幽暗森林', w:2000, h:2000, bg:'#0f1f14', level:1,
-    enemies:['slime','bat','archer','striker','bomber'], maxAlive:8, boss:'forestKing', bossAt:{x:1000,y:300},
+    enemies:['slime','bat','archer','striker','bomber'], maxAlive:12, boss:'forestKing', bossAt:{x:1000,y:300},
     portals:[ {to:'town', x:1000, y:1850, name:'返回城鎮'}, {to:'ruins', x:1000, y:170, name:'遠古廢墟', reqLevel:6} ],
   },
   ruins: {
     name:'遠古廢墟', w:2200, h:2200, bg:'#1a141f', level:7,
-    enemies:['bat','archer','brute','charger','striker','bomber'], maxAlive:9, boss:'ruinLord', bossAt:{x:1100,y:320},
-    portals:[ {to:'forest', x:1100, y:2050, name:'返回森林'}, {to:'cavern', x:1100, y:180, name:'熔岩洞窟', reqLevel:13} ],
+    enemies:['bat','archer','brute','charger','striker','bomber'], maxAlive:13, boss:'ruinLord', bossAt:{x:1100,y:320},
+    portals:[ {to:'forest', x:1100, y:2050, name:'返回森林'}, {to:'cavern', x:1100, y:180, name:'熔岩洞窟', reqLevel:12} ],
   },
   cavern: {
     name:'熔岩洞窟', w:2400, h:2400, bg:'#241010', level:14,
-    enemies:['archer','brute','charger','striker','bomber'], maxAlive:10, boss:'magmaLord', bossAt:{x:1200,y:340},
-    portals:[ {to:'ruins', x:1200, y:2250, name:'返回廢墟'}, {to:'glacier', x:1200, y:190, name:'冰封峽谷', reqLevel:20} ],
+    enemies:['archer','brute','charger','striker','bomber'], maxAlive:15, boss:'magmaLord', bossAt:{x:1200,y:340},
+    portals:[ {to:'ruins', x:1200, y:2250, name:'返回廢墟'}, {to:'glacier', x:1200, y:190, name:'冰封峽谷', reqLevel:19} ],
   },
   glacier: {
     name:'冰封峽谷', w:2600, h:2600, bg:'#0e1a24', level:22,
-    enemies:['bat','archer','brute','charger','striker'], maxAlive:11, boss:'frostQueen', bossAt:{x:1300,y:360},
-    portals:[ {to:'cavern', x:1300, y:2450, name:'返回洞窟'}, {to:'abyss', x:1300, y:200, name:'暗影深淵', reqLevel:30} ],
+    enemies:['bat','archer','brute','charger','striker'], maxAlive:16, boss:'frostQueen', bossAt:{x:1300,y:360},
+    portals:[ {to:'cavern', x:1300, y:2450, name:'返回洞窟'}, {to:'abyss', x:1300, y:200, name:'暗影深淵', reqLevel:28} ],
   },
   abyss: {
     name:'暗影深淵', w:2800, h:2800, bg:'#140a1c', level:32,
-    enemies:['archer','brute','charger','striker','bomber'], maxAlive:12, boss:'abyssKing', bossAt:{x:1400,y:380},
+    enemies:['archer','brute','charger','striker','bomber'], maxAlive:18, boss:'abyssKing', bossAt:{x:1400,y:380},
     portals:[ {to:'glacier', x:1400, y:2650, name:'返回峽谷'} ],
   },
 };
