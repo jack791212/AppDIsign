@@ -257,6 +257,7 @@
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: t.gold,
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
       slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: false,
+      cast: null, castCd: rand(0.6, 1.6), dashT: 0, dvx: 0, dvy: 0,
     });
   }
   G.spawnEnemy = spawnEnemy;
@@ -372,6 +373,12 @@
       G.toast("🏆 擊敗 " + e.name + "！新區域已解鎖");
       if (G.refreshHud) G.refreshHud();
     }
+  };
+
+  // 移除敵人但不給獎勵（用於自爆等非玩家擊殺）
+  G.vanishEnemy = function (e) {
+    const w = G.world; const i = w.enemies.indexOf(e);
+    if (i >= 0) w.enemies.splice(i, 1);
   };
 
   // 掉落

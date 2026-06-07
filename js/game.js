@@ -7,12 +7,15 @@
   const ctx = canvas.getContext("2d");
 
   let W = 0, H = 0, DPR = 1;
+  const STAGE_MAXW = 460; // 桌機鎖定直版欄位寬度，讓手機/電腦比例接近
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
-    W = window.innerWidth; H = window.innerHeight;
+    W = Math.min(window.innerWidth, STAGE_MAXW);
+    H = window.innerHeight;
     canvas.style.width = W + "px"; canvas.style.height = H + "px";
     canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    document.documentElement.style.setProperty("--stage-w", W + "px");
   }
   window.addEventListener("resize", resize); resize();
 
@@ -43,7 +46,16 @@
     const k = e.key.toLowerCase();
     keys[k] = true;
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
+    // 快捷鍵：B 背包、C 天賦
+    if (k === "b") { e.preventDefault(); togglePanel("bagPanel", G.openBag, G.closeBag); }
+    if (k === "c") { e.preventDefault(); togglePanel("talPanel", G.openTalents, G.closeTalents); }
   });
+  function togglePanel(id, openFn, closeFn) {
+    if (!started || dead) return;
+    const el = document.getElementById(id);
+    if (el.classList.contains("show")) closeFn();
+    else { G.closeBag(); G.closeTalents(); G.closeItem(); openFn(); }
+  }
   window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
   window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
   function keyboardVector() {
@@ -57,12 +69,15 @@
 
   const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
   function moveZoneTop() { return H * 0.8; } // 只有畫面下方 20% 是移動控制區
+  function toLocalX(x) { return x - (window.innerWidth - W) / 2; } // 桌機畫面置中時換算為畫布座標
   function pStart(x, y, id) {
     if (isPaused() || controlMode !== "touch") return;
     if (y < moveZoneTop()) return; // 點擊中間/上方不啟動移動，避免擋住角色
+    x = toLocalX(x);
     joy.active = true; joy.id = id; joy.ox = x; joy.oy = y; joy.dx = 0; joy.dy = 0; joy.mag = 0;
   }
   function pMove(x, y) {
+    x = toLocalX(x);
     if (!joy.active) return;
     let dx = x - joy.ox, dy = y - joy.oy; const max = 70; const m = Math.hypot(dx, dy);
     if (m > max) { dx = dx / m * max; dy = dy / m * max; joy.ox = x - dx; joy.oy = y - dy; }
@@ -131,6 +146,57 @@
     G.world.foeShots.push({ x: e.x, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: e.dmg, life: 1.6, r: 7 });
   }
 
+  // ---------- 攻擊範圍讀條（telegraph，可重用於任何敵人）----------
+  // cfg: { shape:'circle'|'sector'|'rect', radius, arcHalf, length, width, dur, dmg, track, lockBefore, ang, cd, onFire }
+  function startCast(e, cfg) {
+    e.cast = Object.assign({ ox: e.x, oy: e.y, ang: 0, t: 0, fired: false, track: false, lockBefore: 0 }, cfg);
+  }
+  function updateCast(e, dt) {
+    const p = G.player, c = e.cast;
+    c.t += dt;
+    c.ox = e.x; c.oy = e.y; // 原點跟隨敵人
+    const tracking = c.track && c.t < c.dur - (c.lockBefore || 0);
+    if (tracking && c.shape !== "circle") c.ang = Math.atan2(p.y - c.oy, p.x - c.ox);
+    if (!c.fired && c.t >= c.dur) {
+      c.fired = true;
+      e.lastCastAng = c.ang;
+      if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e);
+      const cb = c.onFire; e.cast = null; e.castCd = c.cd || 1.6;
+      if (cb) cb(e);
+    }
+  }
+  function castContains(c, px, py, pr) {
+    if (c.shape === "circle") return U.dist(px, py, c.ox, c.oy) <= c.radius + pr;
+    if (c.shape === "sector") {
+      if (U.dist(px, py, c.ox, c.oy) > c.radius + pr) return false;
+      let d = Math.atan2(py - c.oy, px - c.ox) - c.ang;
+      while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+      return Math.abs(d) <= c.arcHalf;
+    }
+    // rect：沿 ang 向前 length、側向 width
+    const dx = px - c.ox, dy = py - c.oy;
+    const lx = dx * Math.cos(c.ang) + dy * Math.sin(c.ang);
+    const ly = -dx * Math.sin(c.ang) + dy * Math.cos(c.ang);
+    return lx >= -pr && lx <= c.length + pr && Math.abs(ly) <= c.width / 2 + pr;
+  }
+  function drawTelegraph(c, cx, cy) {
+    const prog = U.clamp(c.t / c.dur, 0, 1);
+    ctx.save(); ctx.translate(c.ox - cx, c.oy - cy);
+    if (c.shape !== "circle") ctx.rotate(c.ang);
+    ctx.strokeStyle = "rgba(255,90,90,.7)"; ctx.lineWidth = 2; ctx.fillStyle = "rgba(255,40,40,.34)";
+    if (c.shape === "circle") {
+      ctx.beginPath(); ctx.arc(0, 0, c.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, c.radius * prog, 0, Math.PI * 2); ctx.fill();
+    } else if (c.shape === "sector") {
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, c.radius, -c.arcHalf, c.arcHalf); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, c.radius * prog, -c.arcHalf, c.arcHalf); ctx.closePath(); ctx.fill();
+    } else {
+      ctx.strokeRect(0, -c.width / 2, c.length, c.width);
+      ctx.fillRect(0, -c.width / 2, c.length * prog, c.width);
+    }
+    ctx.restore();
+  }
+
   // ---------- 更新 ----------
   function update(dt) {
     const w = G.world, p = G.player, area = w.area;
@@ -154,6 +220,9 @@
     if (p.invuln > 0) p.invuln -= dt;
     // 再生
     if (p.procs.regen > 0) G.healPlayer(p.procs.regen * dt);
+
+    // 面向最近敵人（指向工具持續跟隨）
+    { const tg = nearestEnemy(p.x, p.y); if (tg) p.facing = Math.atan2(tg.y - p.y, tg.x - p.x); }
 
     // 自動攻擊（持續，移動中也會攻擊，朝最近敵人）
     p.cooldown -= dt;
@@ -229,18 +298,51 @@
       }
       const d = U.dist(e.x, e.y, p.x, p.y);
       const a = Math.atan2(p.y - e.y, p.x - e.x);
-      if (e.behavior === "ranged") {
-        // 拉近距離才射擊，避免從畫面外攻擊
-        const want = 150;
-        if (d > want + 45) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
-        else if (d < want - 45) { e.x -= Math.cos(a) * spd * dt; e.y -= Math.sin(a) * spd * dt; }
-        e.fireCd -= dt; if (e.fireCd <= 0 && d < 230) { enemyShoot(e, a); e.fireCd = U.rand(1.6, 2.8); }
-      } else if (e.behavior === "boss") {
-        e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0) { for (let k = -1; k <= 1; k++) enemyShoot(e, a + k * 0.25); e.fireCd = 1.8; }
+      // 讀條 / 衝刺 覆寫一般行動
+      if (e.cast) {
+        updateCast(e, dt);
+      } else if (e.dashT > 0) {
+        e.dashT -= dt; e.x += e.dvx * dt; e.y += e.dvy * dt;
       } else {
-        e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
+        if (e.castCd > 0) e.castCd -= dt;
+        switch (e.behavior) {
+          case "ranged": {
+            const want = 150;
+            if (d > want + 45) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
+            else if (d < want - 45) { e.x -= Math.cos(a) * spd * dt; e.y -= Math.sin(a) * spd * dt; }
+            e.fireCd -= dt; if (e.fireCd <= 0 && d < 230) { enemyShoot(e, a); e.fireCd = U.rand(1.6, 2.8); }
+            break;
+          }
+          case "boss": {
+            e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
+            e.fireCd -= dt;
+            if (e.fireCd <= 0) { for (let k = -1; k <= 1; k++) enemyShoot(e, a + k * 0.25); e.fireCd = 1.8; }
+            break;
+          }
+          case "bomber": {
+            // 衝向玩家，靠近後觸發圓形讀條並自爆（自爆死亡無獎勵）
+            e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
+            if (d < 70) startCast(e, { shape: "circle", radius: 95, dur: 0.85, dmg: e.dmg,
+              onFire: (en) => { G.burst(en.x, en.y, "#ff8a3a", 26); G.shake(8, .25); G.vanishEnemy(en); } });
+            break;
+          }
+          case "charger": {
+            // 進入距離內停下，矩形讀條追蹤方向，最後 0.2s 鎖定後衝鋒
+            if (d > 300) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
+            else if (e.castCd <= 0) startCast(e, { shape: "rect", length: 340, width: 60, dur: 1.1, lockBefore: 0.2, track: true, ang: a, dmg: e.dmg * 1.4, cd: U.rand(1.8, 2.6),
+              onFire: (en) => { const ca = en.lastCastAng; en.dashT = 0.4; en.dvx = Math.cos(ca) * 520; en.dvy = Math.sin(ca) * 520; G.shake(5, .15); } });
+            break;
+          }
+          case "striker": {
+            // 進入距離內觸發 90 度扇形
+            if (d > 80) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
+            else if (e.castCd <= 0) startCast(e, { shape: "sector", radius: 100, arcHalf: Math.PI / 4, dur: 0.65, track: true, lockBefore: 0.1, ang: a, dmg: e.dmg, cd: U.rand(1.0, 1.8) });
+            break;
+          }
+          default: { // chase
+            e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
+          }
+        }
       }
       // 分離
       for (const o of w.enemies) {
@@ -408,6 +510,9 @@
       ctx.fillStyle = "#ff5470"; ctx.beginPath(); ctx.arc(s.x - cx, s.y - cy, s.r, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 1.5; ctx.stroke();
     }
+
+    // 攻擊範圍讀條（在敵人下方繪製）
+    for (const e of w.enemies) { if (e.cast) drawTelegraph(e.cast, cx, cy); }
 
     // 敵人
     for (const e of w.enemies) {

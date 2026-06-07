@@ -5,10 +5,14 @@ html, body {
   user-select: none; -webkit-user-select: none; touch-action: none; overscroll-behavior: none;
   color: #fff;
 }
-#game { display: block; background: #11101a; touch-action: none; }
+:root { --stage-w: 100vw; }
+/* 直版舞台：桌機把畫面與 UI 鎖在置中的窄欄，與手機比例接近 */
+#game { display: block; background: #11101a; touch-action: none;
+  position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.05); }
 
 /* ---------- HUD ---------- */
-#hud { position: fixed; top: 0; left: 0; right: 0; pointer-events: none;
+#hud { position: fixed; top: 0; left: 50%; transform: translateX(-50%); width: var(--stage-w); pointer-events: none;
   padding: env(safe-area-inset-top) 12px 0; display: flex; flex-direction: column; gap: 5px;
   font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
 #topbar { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 14px; }
@@ -19,7 +23,8 @@ html, body {
 #xpbar-bg { height: 5px; margin-top: 3px; } #xpbar { height: 100%; width: 0%; background: linear-gradient(90deg,#3ad0ff,#7af5d0); transition: width .12s; }
 
 /* ---------- bottom buttons ---------- */
-#sidebtns { position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 14px);
+#sidebtns { position: fixed; left: 50%; transform: translateX(calc(var(--stage-w) / 2 - 62px));
+  bottom: calc(env(safe-area-inset-bottom) + 14px);
   display: flex; flex-direction: column; gap: 10px; z-index: 6; }
 .iconbtn { width: 52px; height: 52px; border-radius: 14px; border: 2px solid rgba(255,255,255,.18);
   background: rgba(20,16,34,.8); color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center;
@@ -36,8 +41,9 @@ html, body {
 @keyframes tin { from { opacity:0; transform: translateY(10px);} to {opacity:1; transform:none;} }
 
 /* ---------- panels ---------- */
-.panel { position: fixed; inset: 0; display: none; flex-direction: column; z-index: 20;
-  background: rgba(7,6,13,.94); backdrop-filter: blur(3px);
+.panel { position: fixed; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: var(--stage-w); max-width: 100%; display: none; flex-direction: column; z-index: 20;
+  background: rgba(7,6,13,.97); backdrop-filter: blur(3px);
   padding: calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 14px); }
 .panel.show { display: flex; }
 .panel .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }

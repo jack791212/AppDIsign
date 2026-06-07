@@ -81,6 +81,10 @@ G.ENEMIES = {
   bat:   { name:'蝙蝠',   r:13, color:'#9b6bff', hp:16, dmg:6,  speed:95,  xp:5,  gold:2, behavior:'chase' },
   archer:{ name:'骷髏弓手',r:14, color:'#d9d2c0', hp:22, dmg:9,  speed:45,  xp:7,  gold:4, behavior:'ranged' },
   brute: { name:'石魔',   r:22, color:'#a06a3a', hp:70, dmg:16, speed:48,  xp:14, gold:8, behavior:'chase' },
+  // 使用「攻擊範圍讀條」的新型敵人
+  bomber:  { name:'自爆蟲', r:15, color:'#ff8a3a', hp:26, dmg:18, speed:92, xp:9,  gold:4, behavior:'bomber' },
+  charger: { name:'衝鋒獸', r:19, color:'#d94f9c', hp:55, dmg:20, speed:68, xp:13, gold:7, behavior:'charger' },
+  striker: { name:'利爪兵', r:16, color:'#c0683a', hp:42, dmg:14, speed:78, xp:11, gold:5, behavior:'striker' },
 };
 G.BOSSES = {
   forestKing: { name:'森林之王', r:40, color:'#2e8b57', hp:900, dmg:24, speed:55, xp:200, gold:120, behavior:'boss' },
@@ -97,12 +101,12 @@ G.AREAS = {
   },
   forest: {
     name:'幽暗森林', w:2000, h:2000, bg:'#0f1f14', level:1,
-    enemies:['slime','bat','archer'], maxAlive:8, boss:'forestKing', bossAt:{x:1000,y:300},
+    enemies:['slime','bat','archer','striker','bomber'], maxAlive:8, boss:'forestKing', bossAt:{x:1000,y:300},
     portals:[ {to:'town', x:1000, y:1850, name:'返回城鎮'}, {to:'ruins', x:1000, y:170, name:'遠古廢墟', reqLevel:6} ],
   },
   ruins: {
     name:'遠古廢墟', w:2200, h:2200, bg:'#1a141f', level:7,
-    enemies:['bat','archer','brute'], maxAlive:9, boss:'ruinLord', bossAt:{x:1100,y:320},
+    enemies:['bat','archer','brute','charger','striker','bomber'], maxAlive:9, boss:'ruinLord', bossAt:{x:1100,y:320},
     portals:[ {to:'forest', x:1100, y:2050, name:'返回森林'} ],
   },
 };
