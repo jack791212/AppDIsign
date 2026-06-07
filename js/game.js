@@ -24,10 +24,41 @@
   }
 
   // ---------- 虛擬搖桿 ----------
+  // ---------- 控制模式：touch（手機觸控）/ keyboard（電腦 WASD）----------
+  function detectTouch() {
+    try { return (navigator.maxTouchPoints > 0 || "ontouchstart" in window) && window.matchMedia("(pointer: coarse)").matches; }
+    catch (e) { return ("ontouchstart" in window); }
+  }
+  const CTRL_KEY = "archlike_control";
+  let controlMode = localStorage.getItem(CTRL_KEY) || (detectTouch() ? "touch" : "keyboard");
+  function setControlMode(m) { controlMode = m; try { localStorage.setItem(CTRL_KEY, m); } catch (e) {} updateCtrlBtn(); }
+  function updateCtrlBtn() {
+    const b = document.getElementById("ctrlToggle");
+    if (b) b.textContent = "操作方式：" + (controlMode === "touch" ? "📱 手機觸控" : "⌨️ 電腦 WASD") + "（點擊切換）";
+  }
+
+  // 鍵盤狀態
+  const keys = Object.create(null);
+  window.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
+  });
+  window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
+  window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+  function keyboardVector() {
+    let dx = 0, dy = 0;
+    if (keys["w"] || keys["arrowup"]) dy -= 1;
+    if (keys["s"] || keys["arrowdown"]) dy += 1;
+    if (keys["a"] || keys["arrowleft"]) dx -= 1;
+    if (keys["d"] || keys["arrowright"]) dx += 1;
+    return { dx, dy, mag: (dx || dy) ? 1 : 0 };
+  }
+
   const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
   function moveZoneTop() { return H * 0.8; } // 只有畫面下方 20% 是移動控制區
   function pStart(x, y, id) {
-    if (isPaused()) return;
+    if (isPaused() || controlMode !== "touch") return;
     if (y < moveZoneTop()) return; // 點擊中間/上方不啟動移動，避免擋住角色
     joy.active = true; joy.id = id; joy.ox = x; joy.oy = y; joy.dx = 0; joy.dy = 0; joy.mag = 0;
   }
@@ -105,12 +136,18 @@
     const w = G.world, p = G.player, area = w.area;
     w.time += dt;
 
-    // 玩家移動
-    p.moving = joy.active && joy.mag > 0.08;
+    // 玩家移動（依控制模式：鍵盤 WASD 或觸控搖桿）
+    let mvx = 0, mvy = 0, mag = 0;
+    if (controlMode === "keyboard") {
+      const kv = keyboardVector(); mvx = kv.dx; mvy = kv.dy; mag = kv.mag;
+    } else if (joy.active) {
+      mvx = joy.dx; mvy = joy.dy; mag = joy.mag;
+    }
+    p.moving = mag > 0.08;
     if (p.moving) {
-      const a = Math.atan2(joy.dy, joy.dx);
-      p.x += Math.cos(a) * p.moveSpeed * joy.mag * dt;
-      p.y += Math.sin(a) * p.moveSpeed * joy.mag * dt;
+      const a = Math.atan2(mvy, mvx);
+      p.x += Math.cos(a) * p.moveSpeed * mag * dt;
+      p.y += Math.sin(a) * p.moveSpeed * mag * dt;
       p.x = U.clamp(p.x, p.r, area.w - p.r);
       p.y = U.clamp(p.y, p.r, area.h - p.r);
     }
@@ -461,23 +498,28 @@
     // 小地圖
     drawMinimap(area);
 
-    // 移動控制區 + 搖桿（螢幕座標，無背景）
-    const zTop = moveZoneTop();
-    const bandH = H - zTop;
-    if (joy.active) {
-      ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
-      ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 48, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = .75; ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 26, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
+    // 移動控制區 + 搖桿（僅觸控模式顯示）
+    if (controlMode === "touch") {
+      const zTop = moveZoneTop();
+      const bandH = H - zTop;
+      if (joy.active) {
+        ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 48, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = .75; ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 26, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else {
+        const hx = W / 2, hy = zTop + bandH / 2;
+        const rr = U.clamp(bandH / 2 - 8, 28, 46);
+        ctx.globalAlpha = .2; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(hx, hy, rr, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(hx, hy, rr * 0.52, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     } else {
-      // 休息中的移動球指示（水平置中）
-      const hx = W / 2, hy = zTop + bandH / 2;
-      const rr = U.clamp(bandH / 2 - 8, 28, 46);
-      ctx.globalAlpha = .2; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(hx, hy, rr, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
-      ctx.beginPath(); ctx.arc(hx, hy, rr * 0.52, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
+      // 鍵盤模式提示
+      ctx.globalAlpha = .35; ctx.fillStyle = "#fff"; ctx.font = "600 13px system-ui"; ctx.textAlign = "center";
+      ctx.fillText("WASD / 方向鍵 移動", W / 2, H - 16); ctx.textAlign = "left"; ctx.globalAlpha = 1;
     }
 
     // Boss 血條（螢幕頂部，避開右上小地圖）
@@ -583,6 +625,9 @@
     document.getElementById("talClose").onclick = G.closeTalents;
     document.getElementById("startBtn").onclick = beginGame;
     document.getElementById("respawnBtn").onclick = respawn;
+    const ct = document.getElementById("ctrlToggle");
+    if (ct) ct.onclick = () => setControlMode(controlMode === "touch" ? "keyboard" : "touch");
+    updateCtrlBtn();
     document.getElementById("resetSave").onclick = () => {
       if (confirm("確定要清除所有進度，重新開始嗎？")) { G.wipeSave(); location.reload(); }
     };
