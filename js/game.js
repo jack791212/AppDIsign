@@ -249,13 +249,13 @@
     bulletRings(e) { const reps = 3 + e.tier; e.ultMin = reps * 0.5 + 0.4; addEmitter(e, { dur: reps * 0.5, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.5 && em.n < reps) { em.acc -= 0.5; em.n++; const cnt = 18 + em.n * 2, off = em.n * 0.2; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, off + i / cnt * Math.PI * 2, 185, en.dmg, { r: 7, color: "#a0e0ff" }); } } }); },
     spiralStorm(e) { const dur = 2.6 + e.tier * 0.4; e.ultMin = dur + 0.2; addEmitter(e, { dur, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.06) { em.acc -= 0.06; em.ang += 0.42; for (let arm = 0; arm < 3; arm++) bossShot(en.x, en.y, em.ang + arm * Math.PI * 2 / 3, 210, en.dmg, { r: 6, color: "#c77dff" }); } } }); },
     // ---- 新增複合招式 ----
-    jumpSlam(e) { // 跳起消失，紅圈追玩家 2 秒後砸下
-      e.airborne = true; e.ultMin = 2.7;
-      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 135, dur: 2.2, followT: 2.0, dmg: e.dmg * 2.0, big: true, onFire: (c) => { e.airborne = false; e.x = c.ox; e.y = c.oy; } });
+    jumpSlam(e) { // 跳起消失，紅圈從落點起追玩家 2 秒、再 0.4 秒後砸下
+      e.airborne = true; e.ultMin = 2.9;
+      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 135, dur: 2.4, followT: 2.0, chaseSpeed: 165, dmg: e.dmg * 2.0, big: true, onFire: (c) => { e.airborne = false; e.x = c.ox; e.y = c.oy; } });
     },
     jumpCross(e) { // 跳躍砸地 + 落地追加十字光束與彈環
-      e.airborne = true; e.ultMin = 3.1;
-      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 145, dur: 2.2, followT: 2.0, dmg: e.dmg * 2.0, big: true, onFire: (c) => {
+      e.airborne = true; e.ultMin = 3.3;
+      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 145, dur: 2.4, followT: 2.0, chaseSpeed: 165, dmg: e.dmg * 2.0, big: true, onFire: (c) => {
         e.airborne = false; e.x = c.ox; e.y = c.oy;
         for (let k = 0; k < 4; k++) addFreeCast({ shape: "rect", ox: c.ox, oy: c.oy, ang: k * Math.PI / 2 + Math.random() * 0.3, length: 760, width: 74, dur: 0.9, dmg: e.dmg * 1.4 });
         const cnt = 20; for (let i = 0; i < cnt; i++) bossShot(c.ox, c.oy, i / cnt * Math.PI * 2, 180, e.dmg, { r: 7 });
@@ -445,7 +445,7 @@
             // 進入距離內停下，矩形讀條追蹤方向，最後 0.2s 鎖定後衝鋒
             if (d > 300) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
             else if (e.castCd <= 0) startCast(e, { shape: "rect", length: 340, width: 60, dur: 1.1, lockBefore: 0.2, track: true, ang: a, dmg: e.dmg * 1.4, cd: U.rand(1.8, 2.6),
-              onFire: (en) => { const ca = en.lastCastAng; en.dashT = 0.4; en.dvx = Math.cos(ca) * 520; en.dvy = Math.sin(ca) * 520; G.shake(5, .15); } });
+              onFire: (en) => { const ca = en.lastCastAng, len = 340, sp = 760; en.dashT = len / sp; en.dvx = Math.cos(ca) * sp; en.dvy = Math.sin(ca) * sp; G.shake(5, .15); } });
             break;
           }
           case "striker": {
@@ -515,7 +515,13 @@
     // 自由攻擊讀條（Boss 大招/陷阱用）：aoe=讀條完仍在範圍內受傷；wave=放出光波
     for (let i = w.casts.length - 1; i >= 0; i--) {
       const c = w.casts[i]; c.t += dt;
-      if (c.followT && c.t < c.followT) { c.ox = p.x; c.oy = p.y; if (c.shape !== "circle") c.ang = Math.atan2(p.y - c.oy, p.x - c.ox); }
+      if (c.followT && c.t < c.followT) {
+        if (c.chaseSpeed) { // 從原點以有限速度追向玩家（可閃避）
+          const ca = Math.atan2(p.y - c.oy, p.x - c.ox), dd = U.dist(c.ox, c.oy, p.x, p.y), step = Math.min(dd, c.chaseSpeed * dt);
+          c.ox += Math.cos(ca) * step; c.oy += Math.sin(ca) * step;
+        } else { c.ox = p.x; c.oy = p.y; }
+        if (c.shape !== "circle") c.ang = Math.atan2(p.y - c.oy, p.x - c.ox);
+      }
       if (!c.fired && c.t >= c.dur) {
         c.fired = true;
         if (c.mode === "wave") { w.waves.push({ ox: c.ox, oy: c.oy, ang: c.ang || 0, width: c.width || 60, thickness: 36, speed: 560, traveled: 0, maxLen: c.length || 400, dmg: c.dmg, color: "#ffcf66", hit: false }); }
