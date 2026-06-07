@@ -25,6 +25,7 @@
     $("xpbar").style.width = (s.xp / G.xpForLevel(s.level) * 100) + "%";
     const tp = $("talBadge");
     if (s.talentPts > 0) { tp.style.display = "flex"; tp.textContent = s.talentPts; } else tp.style.display = "none";
+    const sb = $("shopBtn"); if (sb) sb.style.display = (w.area && w.area.safe) ? "flex" : "none";
   };
 
   // ---------- 背包操作 ----------
@@ -213,5 +214,40 @@
   G.renderTalents = renderTalents;
   G.openTalents = function () { renderTalents(); $("talPanel").classList.add("show"); };
   G.closeTalents = function () { $("talPanel").classList.remove("show"); };
+
+  // ---------- 城鎮商店 ----------
+  function renderShop() {
+    $("shopGold").textContent = "🪙 " + G.save.gold;
+    $("gambleHint").textContent = "每次花費 🪙" + G.gambleCost() + "，隨機詞條，越高等越好";
+    const gr = $("gambleRow"); gr.innerHTML = "";
+    for (const slot of G.SLOTS) {
+      const info = G.SLOT_INFO[slot];
+      const d = document.createElement("div");
+      d.className = "eqslot"; d.style.cursor = "pointer";
+      d.innerHTML = `<div class="ic">${info.ic}</div><div class="lbl">${info.name}</div>`;
+      d.onclick = () => { const it = G.gamble(slot); if (it) renderShop(); };
+      gr.appendChild(d);
+    }
+    const el = $("enhanceList"); el.innerHTML = "";
+    let any = false;
+    for (const slot of G.SLOTS) {
+      const it = G.save.equipped[slot]; if (!it) continue; any = true;
+      const r = G.RARITY[it.rarity];
+      const maxed = (it.plus || 0) >= G.MAX_PLUS;
+      const cost = G.enhanceCost(it);
+      const row = document.createElement("div");
+      row.className = "talnode"; row.style.display = "flex"; row.style.justifyContent = "space-between"; row.style.alignItems = "center";
+      row.innerHTML = `<div><span class="t-${r.cls}" style="font-weight:700">${it.ic} ${it.baseName}${it.plus ? " +" + it.plus : ""}</span><div style="font-size:11px;color:#9b8fc0">${G.SLOT_INFO[slot].name}</div></div>`
+        + `<button class="bEquip" style="border:none;border-radius:8px;padding:8px 12px;font-weight:700;color:#fff">${maxed ? "已滿級" : "強化 🪙" + cost}</button>`;
+      const btn = row.querySelector("button");
+      if (maxed) { btn.style.background = "#444"; btn.disabled = true; }
+      else btn.onclick = () => { if (G.enhanceItem(it)) renderShop(); };
+      el.appendChild(row);
+    }
+    if (!any) el.innerHTML = `<div style="color:#6b6480;text-align:center;padding:16px 0;font-size:13px">尚未裝備任何裝備</div>`;
+  }
+  G.renderShop = renderShop;
+  G.openShop = function () { renderShop(); $("shopPanel").classList.add("show"); };
+  G.closeShop = function () { $("shopPanel").classList.remove("show"); };
 
 })();

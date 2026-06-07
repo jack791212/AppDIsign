@@ -46,15 +46,24 @@
     const k = e.key.toLowerCase();
     keys[k] = true;
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
-    // 快捷鍵：B 背包、C 天賦
+    // 快捷鍵：B 背包、C 天賦、T 回城
     if (k === "b") { e.preventDefault(); togglePanel("bagPanel", G.openBag, G.closeBag); }
     if (k === "c") { e.preventDefault(); togglePanel("talPanel", G.openTalents, G.closeTalents); }
+    if (k === "t") { e.preventDefault(); startRecall(); }
   });
   function togglePanel(id, openFn, closeFn) {
     if (!started || dead) return;
     const el = document.getElementById(id);
     if (el.classList.contains("show")) closeFn();
     else { G.closeBag(); G.closeTalents(); G.closeItem(); openFn(); }
+  }
+  // 一鍵回城（受傷會中斷）
+  let recalling = false, recallT = 0, recallPrevHp = 0;
+  function startRecall() {
+    if (!started || dead) return;
+    if (G.world.area && G.world.area.safe) { G.toast("已在城鎮"); return; }
+    if (recalling) { recalling = false; G.toast("已取消回城"); return; }
+    recalling = true; recallT = 1.8; G.toast("回城中…（受傷會中斷）");
   }
   window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
   window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
@@ -97,7 +106,7 @@
   // ---------- 攻擊（依武器類型分流）----------
   function nearestEnemy(x, y) {
     let t = null, b = Infinity;
-    for (const e of G.world.enemies) { if (e.hp <= 0) continue; const d = U.dist(x, y, e.x, e.y); if (d < b) { b = d; t = e; } }
+    for (const e of G.world.enemies) { if (e.hp <= 0 || e.airborne) continue; const d = U.dist(x, y, e.x, e.y); if (d < b) { b = d; t = e; } }
     return t;
   }
   function playerAttack() {
@@ -124,7 +133,7 @@
     const tgt = nearestEnemy(p.x, p.y);
     const baseAng = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing;
     p.facing = baseAng;
-    const reach = WT.reach || 100, arcHalf = WT.arcHalf || 1;
+    const reach = (WT.reach || 100) * (1 + (p.rangePct || 0) / 100), arcHalf = WT.arcHalf || 1;
     for (const e of w.enemies.slice()) {
       if (e.hp <= 0) continue;
       if (U.dist(p.x, p.y, e.x, e.y) > reach + e.r) continue;
@@ -173,10 +182,11 @@
       while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
       return Math.abs(d) <= c.arcHalf;
     }
-    // rect：沿 ang 向前 length、側向 width
+    // rect：沿 ang 向前 length、側向 width（centered=以原點為中心，可作正方形）
     const dx = px - c.ox, dy = py - c.oy;
     const lx = dx * Math.cos(c.ang) + dy * Math.sin(c.ang);
     const ly = -dx * Math.sin(c.ang) + dy * Math.cos(c.ang);
+    if (c.centered) return Math.abs(lx) <= c.length / 2 + pr && Math.abs(ly) <= c.width / 2 + pr;
     return lx >= -pr && lx <= c.length + pr && Math.abs(ly) <= c.width / 2 + pr;
   }
   function drawTelegraph(c, cx, cy) {
@@ -190,6 +200,9 @@
     } else if (c.shape === "sector") {
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, c.radius, -c.arcHalf, c.arcHalf); ctx.closePath(); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, c.radius * prog, -c.arcHalf, c.arcHalf); ctx.closePath(); ctx.fill();
+    } else if (c.centered) {
+      ctx.strokeRect(-c.length / 2, -c.width / 2, c.length, c.width);
+      ctx.fillRect(-c.length * prog / 2, -c.width / 2, c.length * prog, c.width);
     } else {
       ctx.strokeRect(0, -c.width / 2, c.length, c.width);
       ctx.fillRect(0, -c.width / 2, c.length * prog, c.width);
@@ -197,7 +210,7 @@
     ctx.restore();
   }
 
-  // ---------- Boss 戰鬥：彈幕 / 攻擊模式 / 大招（可重用）----------
+  // ========== Boss 戰鬥：可重用招式建構工具 ==========
   function angTo(e) { return Math.atan2(G.player.y - e.y, G.player.x - e.x); }
   function bossShot(x, y, ang, speed, dmg, opts) {
     const s = { x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, dmg, life: 4.5, r: 7, color: "#ff5470", turn: 0, accel: 0 };
@@ -205,9 +218,14 @@
     G.world.foeShots.push(s);
   }
   function addEmitter(e, em) { e.emitters.push(Object.assign({ t: 0, acc: 0, n: 0 }, em)); }
-  function addFreeCast(cfg) { G.world.casts.push(Object.assign({ t: 0, fired: false, dmg: 0, arcHalf: 0, radius: 0, length: 0, width: 0, ang: 0 }, cfg)); }
+  function addFreeCast(cfg) { G.world.casts.push(Object.assign({ t: 0, fired: false, dmg: 0, arcHalf: 0, radius: 0, length: 0, width: 0, ang: 0, mode: "aoe" }, cfg)); }
+  // 在玩家周圍預警生成一批敵人（召喚波）
+  function summonAround(typeId, n, radius) {
+    const p = G.player;
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, r = radius * (0.55 + Math.random() * 0.55); G.spawnPendingAt(typeId, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, 0.8); }
+  }
 
-  // 普攻模式池
+  // ---- 普攻模式池（較輕量，依 atkCd 觸發）----
   const ATTACKS = {
     aimVolley(e) { const a = angTo(e); for (let i = -2; i <= 2; i++) bossShot(e.x, e.y, a + i * 0.16, 260, e.dmg, { r: 7 }); },
     ring(e) { const n = 16, off = Math.random() * Math.PI; for (let i = 0; i < n; i++) bossShot(e.x, e.y, off + i / n * Math.PI * 2, 200, e.dmg, { r: 7, color: "#ff7aa0" }); },
@@ -215,55 +233,78 @@
     aimBurst(e) { addEmitter(e, { dur: 0.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.14 && em.n < 4) { em.acc -= 0.14; em.n++; bossShot(en.x, en.y, angTo(en), 330, en.dmg, { r: 8 }); } } }); },
     wallRect(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 380, width: 66, dur: 1.0, dmg: e.dmg * 1.3 }); },
     sectorSlash(e) { addFreeCast({ shape: "sector", ox: e.x, oy: e.y, ang: angTo(e), radius: 160, arcHalf: Math.PI / 6, dur: 0.7, dmg: e.dmg * 1.2 }); },
+    coneBurst(e) { const a = angTo(e); for (let i = -4; i <= 4; i++) bossShot(e.x, e.y, a + i * 0.1, 250, e.dmg, { r: 7, color: "#ff8aa0" }); },
+    homingOrbs(e) { for (let i = 0; i < 3; i++) bossShot(e.x, e.y, angTo(e) + (i - 1) * 0.4, 175, e.dmg, { r: 8, color: "#ff9f40", homingT: 1.8, homTurn: 2.2, life: 2.4 }); },
+    twinSpiral(e) { addEmitter(e, { dur: 1.4, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.07) { em.acc -= 0.07; em.ang += 0.45; for (let k = 0; k < 2; k++) bossShot(en.x, en.y, em.ang + k * Math.PI, 235, en.dmg, { r: 6, color: "#ffd166" }); } } }); },
   };
 
-  // 大招（每個 Boss 三選一）
+  // ---- 大招（蓄力後三選一；e.tier 隨難度提升使持續時間/數量疊加）----
   const ULTS = {
-    novaRing(e) { // 大範圍齊發兩圈 + 近身爆炸圈
-      for (let wv = 0; wv < 2; wv++) { const n = 24; for (let i = 0; i < n; i++) bossShot(e.x, e.y, wv * 0.13 + i / n * Math.PI * 2, 160 + wv * 60, e.dmg, { r: 8 }); }
-      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 150, dur: 0.9, dmg: e.dmg * 1.6 });
-      G.shake(8, .3); e.ultMin = 1.2;
+    novaRing(e) { for (let wv = 0; wv < 2 + (e.tier > 2 ? 1 : 0); wv++) { const n = 24; for (let i = 0; i < n; i++) bossShot(e.x, e.y, wv * 0.13 + i / n * Math.PI * 2, 160 + wv * 55, e.dmg, { r: 8 }); } addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 150, dur: 0.9, dmg: e.dmg * 1.6, big: true }); e.ultMin = 1.3; },
+    meteorRain(e) { const dur = 2.4 + e.tier * 0.4; e.ultMin = dur + 0.3; addEmitter(e, { dur, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.2) { em.acc -= 0.2; const p = G.player; addFreeCast({ shape: "circle", ox: p.x + U.rand(-180, 180), oy: p.y + U.rand(-180, 180), radius: 66, dur: 0.85, dmg: en.dmg * 1.3 }); } } }); },
+    sectorSweep(e) { const reps = 3 + e.tier; e.ultMin = reps * 0.55 + 0.4; addEmitter(e, { dur: reps * 0.55, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.55 && em.n < reps) { em.acc -= 0.55; em.n++; addFreeCast({ shape: "sector", ox: en.x, oy: en.y, ang: angTo(en) + U.rand(-.3, .3), radius: 250, arcHalf: Math.PI / 3, dur: 0.8, dmg: en.dmg * 1.4 }); } } }); },
+    crossBeams(e) { const waves = 2 + (e.tier > 1 ? 1 : 0); const fire = (rot) => { for (let k = 0; k < 4; k++) addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: rot + k * Math.PI / 2, length: 800, width: 72, dur: 1.1, dmg: e.dmg * 1.5 }); }; fire(Math.random() * Math.PI); e.ultMin = waves * 0.7 + 0.6; addEmitter(e, { dur: waves * 0.7, gap: 0.65, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < waves - 1) { em.acc -= em.gap; em.n++; fire(Math.random() * Math.PI); } } }); },
+    bulletRings(e) { const reps = 3 + e.tier; e.ultMin = reps * 0.5 + 0.4; addEmitter(e, { dur: reps * 0.5, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.5 && em.n < reps) { em.acc -= 0.5; em.n++; const cnt = 18 + em.n * 2, off = em.n * 0.2; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, off + i / cnt * Math.PI * 2, 185, en.dmg, { r: 7, color: "#a0e0ff" }); } } }); },
+    spiralStorm(e) { const dur = 2.6 + e.tier * 0.4; e.ultMin = dur + 0.2; addEmitter(e, { dur, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.06) { em.acc -= 0.06; em.ang += 0.42; for (let arm = 0; arm < 3; arm++) bossShot(en.x, en.y, em.ang + arm * Math.PI * 2 / 3, 210, en.dmg, { r: 6, color: "#c77dff" }); } } }); },
+    // ---- 新增複合招式 ----
+    jumpSlam(e) { // 跳起消失，紅圈追玩家 2 秒後砸下
+      e.airborne = true; e.ultMin = 2.7;
+      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 135, dur: 2.2, followT: 2.0, dmg: e.dmg * 2.0, big: true, onFire: (c) => { e.airborne = false; e.x = c.ox; e.y = c.oy; } });
     },
-    meteorRain(e) { // 連續圓形隕石砸向玩家周圍
-      e.ultMin = 2.8;
-      addEmitter(e, { dur: 2.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.22) { em.acc -= 0.22; const p = G.player; addFreeCast({ shape: "circle", ox: p.x + U.rand(-170, 170), oy: p.y + U.rand(-170, 170), radius: 66, dur: 0.85, dmg: en.dmg * 1.3 }); } } });
+    jumpCross(e) { // 跳躍砸地 + 落地追加十字光束與彈環
+      e.airborne = true; e.ultMin = 3.1;
+      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 145, dur: 2.2, followT: 2.0, dmg: e.dmg * 2.0, big: true, onFire: (c) => {
+        e.airborne = false; e.x = c.ox; e.y = c.oy;
+        for (let k = 0; k < 4; k++) addFreeCast({ shape: "rect", ox: c.ox, oy: c.oy, ang: k * Math.PI / 2 + Math.random() * 0.3, length: 760, width: 74, dur: 0.9, dmg: e.dmg * 1.4 });
+        const cnt = 20; for (let i = 0; i < cnt; i++) bossShot(c.ox, c.oy, i / cnt * Math.PI * 2, 180, e.dmg, { r: 7 });
+      } });
     },
-    sectorSweep(e) { // 連續三道大扇形
-      e.ultMin = 2.0;
-      addEmitter(e, { dur: 1.9, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.55 && em.n < 3) { em.acc -= 0.55; em.n++; addFreeCast({ shape: "sector", ox: en.x, oy: en.y, ang: angTo(en) + U.rand(-.3, .3), radius: 250, arcHalf: Math.PI / 3, dur: 0.8, dmg: en.dmg * 1.4 }); } } });
+    homingBloom(e) { // 追蹤彈，數秒後原地化為圓形範圍爆炸
+      e.ultMin = 2.8; const n = 4 + e.tier;
+      for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; bossShot(e.x, e.y, a, 150, e.dmg, { r: 9, color: "#ff9f40", homingT: 2.0, homTurn: 2.2, life: 2.0, bloom: true, bloomR: 85, bloomDmg: e.dmg * 1.4 }); }
     },
-    crossBeams(e) { // 十字矩形光束，兩波交錯
-      const fire = (rot) => { for (let k = 0; k < 4; k++) addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: rot + k * Math.PI / 2, length: 760, width: 72, dur: 1.1, dmg: e.dmg * 1.5 }); };
-      fire(Math.random() * Math.PI); e.ultMin = 1.9;
-      addEmitter(e, { dur: 1.8, fn(en, dt, em) { if (!em.n && em.t >= 1.5) { em.n = 1; fire(Math.PI / 4); } } });
+    fieldSweepH(e) { // 全場橫向矩形逐排掃描，需走位到已觸發排
+      const rows = 6 + e.tier, area = G.world.area, top = U.clamp(G.player.y - 380, 120, area.h - 120 - rows * 130);
+      e.ultMin = rows * 0.42 + 0.6;
+      addEmitter(e, { dur: rows * 0.42 + 0.2, gap: 0.42, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < rows) { em.acc -= em.gap; const oy = top + em.n * 130; em.n++; addFreeCast({ shape: "rect", centered: true, ox: area.w / 2, oy, ang: 0, length: area.w, width: 120, dur: 0.7, dmg: en.dmg * 1.2 }); } } });
     },
-    bulletRings(e) { // 多重環齊發 + 連射
-      e.ultMin = 2.0;
-      addEmitter(e, { dur: 1.9, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.5 && em.n < 3) { em.acc -= 0.5; em.n++; const cnt = 18 + em.n * 2, off = em.n * 0.2; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, off + i / cnt * Math.PI * 2, 185, en.dmg, { r: 7, color: "#a0e0ff" }); } } });
+    fieldSweepV(e) { // 全場縱向矩形逐列掃描
+      const cols = 6 + e.tier, area = G.world.area, left = U.clamp(G.player.x - 380, 120, area.w - 120 - cols * 130);
+      e.ultMin = cols * 0.42 + 0.6;
+      addEmitter(e, { dur: cols * 0.42 + 0.2, gap: 0.42, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < cols) { em.acc -= em.gap; const ox = left + em.n * 130; em.n++; addFreeCast({ shape: "rect", centered: true, ox, oy: area.h / 2, ang: Math.PI / 2, length: area.h, width: 120, dur: 0.7, dmg: en.dmg * 1.2 }); } } });
     },
-    spiralStorm(e) { // 長時間三臂螺旋彈幕
-      e.ultMin = 3.1;
-      addEmitter(e, { dur: 3.0, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.06) { em.acc -= 0.06; em.ang += 0.42; for (let arm = 0; arm < 3; arm++) bossShot(en.x, en.y, em.ang + arm * Math.PI * 2 / 3, 210, en.dmg, { r: 6, color: "#c77dff" }); } } });
+    megaCharge(e) { // 大範圍光波橫掃，更寬更長
+      const reps = 2 + e.tier; e.ultMin = reps * 0.7 + 0.5;
+      addEmitter(e, { dur: reps * 0.7, gap: 0.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < reps) { em.acc -= em.gap; em.n++; addFreeCast({ shape: "rect", ox: en.x, oy: en.y, ang: angTo(en), length: 900, width: 170, dur: 0.8, mode: "wave", dmg: en.dmg * 1.5, big: true }); } } });
+    },
+    bomberSwarm(e) { e.ultMin = 1.4; summonAround("bomber", 5 + e.tier, 250); },
+    chargerRush(e) { e.ultMin = 1.4; summonAround("charger", 3 + e.tier, 300); },
+    boxTrap(e) { // 玩家周圍正方形 AOE（需離開方框）+ 彈環
+      e.ultMin = 1.6; const p = G.player, s = 210;
+      addFreeCast({ shape: "rect", centered: true, ox: p.x, oy: p.y, ang: 0, length: s, width: s, dur: 1.0, dmg: e.dmg * 1.6 });
+      const cnt = 16; for (let i = 0; i < cnt; i++) bossShot(e.x, e.y, i / cnt * Math.PI * 2, 175, e.dmg, { r: 7, color: "#a0e0ff" });
+    },
+    spiralPlusRing(e) { // 螺旋風暴 + 週期彈環（複合）
+      ULTS.spiralStorm(e); e.ultMin = 3.0;
+      addEmitter(e, { dur: 3.0, gap: 0.8, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap) { em.acc -= em.gap; const cnt = 16; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, i / cnt * Math.PI * 2 + 0.2, 170, en.dmg, { r: 7, color: "#a0e0ff" }); } } });
     },
   };
 
   function updateBoss(e, dt) {
     const p = G.player;
     const a = angTo(e), d = U.dist(e.x, e.y, p.x, p.y);
-    // 持續執行發射器
     for (let i = e.emitters.length - 1; i >= 0; i--) { const em = e.emitters[i]; em.t += dt; em.fn(e, dt, em); if (em.t >= em.dur) e.emitters.splice(i, 1); }
 
     if (e.ultState === "windup") {
       e.ultT += dt;
       if (e.ultT >= e.ultDur) { const id = U.pick(e.ults); (ULTS[id] || ULTS.novaRing)(e); e.ultState = "active"; e.ultActiveT = 0; }
-      return; // 蓄力時不動、不普攻
+      return;
     }
     if (e.ultState === "active") {
       e.ultActiveT += dt;
-      if (e.emitters.length === 0 && e.ultActiveT >= (e.ultMin || 1.2)) { e.ultState = "move"; e.ultCd = U.rand(7, 11); }
+      if (e.emitters.length === 0 && !e.airborne && e.ultActiveT >= (e.ultMin || 1.2)) { e.ultState = "move"; e.ultCd = U.rand(6, 9); }
       return;
     }
-    // move：靠近並普攻
     if (d > 200) { e.x += Math.cos(a) * e.baseSpeed * dt; e.y += Math.sin(a) * e.baseSpeed * dt; }
     e.atkCd -= dt;
     if (e.atkCd <= 0) { const id = U.pick(e.attacks); (ATTACKS[id] || ATTACKS.aimVolley)(e); e.atkCd = U.rand(1.5, 2.6); }
@@ -345,7 +386,7 @@
       let dead2 = b.life <= 0 || b.x < -20 || b.x > area.w + 20 || b.y < -20 || b.y > area.h + 20;
       if (!dead2) {
         for (const e of w.enemies) {
-          if (e.hp <= 0 || b.hits.includes(e)) continue;
+          if (e.hp <= 0 || e.airborne || b.hits.includes(e)) continue;
           if (U.dist(b.x, b.y, e.x, e.y) < e.r + 5) {
             b.hits.push(e); G.burst(b.x, b.y, "#ffd166", 4);
             G.onPlayerHit(e);
@@ -423,9 +464,9 @@
         if (dd > 0 && dd < e.r + o.r) { const pa = Math.atan2(e.y - o.y, e.x - o.x); const push = (e.r + o.r - dd) * .5; e.x += Math.cos(pa) * push; e.y += Math.sin(pa) * push; }
       }
       e.x = U.clamp(e.x, e.r, area.w - e.r); e.y = U.clamp(e.y, e.r, area.h - e.r);
-      // 接觸傷害
+      // 接觸傷害（空中的 Boss 不造成接觸傷害）
       e.touchCd -= dt;
-      if (d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e); e.touchCd = 0.6; }
+      if (!e.airborne && d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e); e.touchCd = 0.6; }
     }
 
     // 召喚物（史萊姆）：追蹤並攻擊最近敵人
@@ -436,8 +477,8 @@
         const a = Math.atan2(tgt.y - m.y, tgt.x - m.x), d = U.dist(m.x, m.y, tgt.x, tgt.y);
         if (d > m.r + tgt.r + 2) { m.x += Math.cos(a) * 185 * dt; m.y += Math.sin(a) * 185 * dt; }
         m.atkCd -= dt;
-        // 召喚物造成傷害並套用玩家天賦/特效（暴擊、燃燒、連鎖、吸血…）
-        if (d < m.r + tgt.r + 5 && m.atkCd <= 0) { G.onPlayerHit(tgt, 0.85); m.atkCd = 0.45; m.hp -= tgt.dmg * 0.3; }
+        // 召喚物造成傷害並套用玩家天賦/特效（含召喚強化詞條）
+        if (d < m.r + tgt.r + 5 && m.atkCd <= 0) { G.onPlayerHit(tgt, 0.85 * (1 + (p.minionPct || 0) / 100)); m.atkCd = 0.45; m.hp -= tgt.dmg * 0.3; }
       } else {
         const a = Math.atan2(p.y - m.y, p.x - m.x), d = U.dist(m.x, m.y, p.x, p.y);
         if (d > 60) { m.x += Math.cos(a) * 160 * dt; m.y += Math.sin(a) * 160 * dt; }
@@ -446,21 +487,47 @@
       if (m.hp <= 0) { G.burst(m.x, m.y, "#5fc46b", 8); w.minions.splice(i, 1); }
     }
 
-    // 敵人子彈（支援轉向 turn / 加速 accel 等特殊軌跡）
+    // 敵人子彈（支援追蹤 homing / 轉向 / 加速 / 到期化為範圍爆炸 bloom）
     for (let i = w.foeShots.length - 1; i >= 0; i--) {
       const s = w.foeShots[i];
+      if (s.homingT && s.homingT > 0) { s.homingT -= dt; const cur = Math.atan2(s.vy, s.vx); let diff = Math.atan2(p.y - s.y, p.x - s.x) - cur; while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2; const na = cur + U.clamp(diff, -(s.homTurn || 2) * dt, (s.homTurn || 2) * dt), sp = Math.hypot(s.vx, s.vy); s.vx = Math.cos(na) * sp; s.vy = Math.sin(na) * sp; }
       if (s.turn) { const ang = Math.atan2(s.vy, s.vx) + s.turn * dt, sp = Math.hypot(s.vx, s.vy); s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp; }
       if (s.accel) { const ang = Math.atan2(s.vy, s.vx), sp = Math.hypot(s.vx, s.vy) + s.accel * dt; s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp; }
       s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-      if (s.life <= 0 || s.x < -30 || s.x > area.w + 30 || s.y < -30 || s.y > area.h + 30) { w.foeShots.splice(i, 1); continue; }
-      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null); w.foeShots.splice(i, 1); }
+      const out = s.x < -30 || s.x > area.w + 30 || s.y < -30 || s.y > area.h + 30;
+      if (s.life <= 0 || out) { if (s.bloom && !out) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); continue; }
+      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null); if (s.bloom) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); }
     }
 
-    // 自由攻擊讀條（Boss 大招/陷阱用，與敵人無綁定）
+    // 移動光波（實體碰撞傷害：碰到才受傷）
+    for (let i = w.waves.length - 1; i >= 0; i--) {
+      const v = w.waves[i]; v.traveled += v.speed * dt;
+      if (!v.hit) {
+        const dx = p.x - v.ox, dy = p.y - v.oy;
+        const lx = dx * Math.cos(v.ang) + dy * Math.sin(v.ang), ly = -dx * Math.sin(v.ang) + dy * Math.cos(v.ang);
+        if (Math.abs(lx - v.traveled) < v.thickness / 2 + p.r && Math.abs(ly) < v.width / 2 + p.r) { G.damagePlayer(v.dmg, null); v.hit = true; }
+      }
+      if (v.traveled > v.maxLen) w.waves.splice(i, 1);
+    }
+
+    // 自由攻擊讀條（Boss 大招/陷阱用）：aoe=讀條完仍在範圍內受傷；wave=放出光波
     for (let i = w.casts.length - 1; i >= 0; i--) {
       const c = w.casts[i]; c.t += dt;
-      if (!c.fired && c.t >= c.dur) { c.fired = true; if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null); G.burst(c.ox, c.oy, "#ff6644", 12); G.shake(3, .1); }
+      if (c.followT && c.t < c.followT) { c.ox = p.x; c.oy = p.y; if (c.shape !== "circle") c.ang = Math.atan2(p.y - c.oy, p.x - c.ox); }
+      if (!c.fired && c.t >= c.dur) {
+        c.fired = true;
+        if (c.mode === "wave") { w.waves.push({ ox: c.ox, oy: c.oy, ang: c.ang || 0, width: c.width || 60, thickness: 36, speed: 560, traveled: 0, maxLen: c.length || 400, dmg: c.dmg, color: "#ffcf66", hit: false }); }
+        else if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null);
+        G.burst(c.ox, c.oy, "#ff6644", 12); G.shake(c.big ? 7 : 3, c.big ? .25 : .1);
+        if (c.onFire) c.onFire(c);
+      }
       if (c.t >= c.dur + 0.12) w.casts.splice(i, 1);
+    }
+
+    // 待生成敵人（紅色預警 → 1 秒後出現）
+    for (let i = w.spawns.length - 1; i >= 0; i--) {
+      const sp = w.spawns[i]; sp.t += dt;
+      if (sp.t >= sp.dur) { G.materializeEnemy(sp.typeId, sp.x, sp.y); w.spawns.splice(i, 1); }
     }
 
     // 粒子
@@ -478,9 +545,10 @@
     // 刷怪（密度提升：落後較多時一次補兩隻）
     if (!area.safe) {
       w.spawnTimer -= dt;
-      if (w.spawnTimer <= 0 && w.enemies.length < area.maxAlive) {
+      const alive = w.enemies.length + w.spawns.length;
+      if (w.spawnTimer <= 0 && alive < area.maxAlive) {
         G.spawnEnemy();
-        if (w.enemies.length < area.maxAlive - 2) G.spawnEnemy();
+        if (alive < area.maxAlive - 2) G.spawnEnemy();
         w.spawnTimer = U.rand(0.5, 1.1);
       }
       // 六芒星祭壇：站入填滿進度 → 延遲 2 秒後在祭壇召喚 Boss
@@ -506,6 +574,13 @@
 
     // 傳送門偵測
     updatePortalPrompt();
+
+    // 回城倒數（受傷中斷）
+    if (recalling) {
+      if (p.hp < recallPrevHp - 0.5) { recalling = false; G.toast("回城被打斷！"); }
+      else { recallT -= dt; if (recallT <= 0) { recalling = false; G.enterArea("town"); G.toast("已回到城鎮"); } }
+    }
+    recallPrevHp = p.hp;
 
     // 震動衰減
     if (w.shakeT > 0) { w.shakeT -= dt; if (w.shakeT <= 0) w.shakeMag = 0; }
@@ -635,6 +710,24 @@
       ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 1.5; ctx.stroke();
     }
 
+    // 移動光波
+    for (const v of w.waves) {
+      const fx = v.ox + Math.cos(v.ang) * v.traveled - cx, fy = v.oy + Math.sin(v.ang) * v.traveled - cy;
+      ctx.save(); ctx.translate(fx, fy); ctx.rotate(v.ang);
+      ctx.fillStyle = v.color || "#ffcf66"; ctx.globalAlpha = .85;
+      ctx.fillRect(-v.thickness / 2, -v.width / 2, v.thickness, v.width);
+      ctx.globalAlpha = 1; ctx.restore();
+    }
+
+    // 一般敵人生成預警（紅色閃爍圈）
+    for (const sp of w.spawns) {
+      const x = sp.x - cx, y = sp.y - cy, blink = Math.sin(sp.t * 22) > 0;
+      ctx.globalAlpha = blink ? .5 : .18; ctx.fillStyle = "#ff3b3b";
+      ctx.beginPath(); ctx.arc(x, y, sp.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = .85; ctx.strokeStyle = "#ff6b6b"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, sp.r, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+
     // 攻擊範圍讀條（敵人讀條 + Boss 大招自由讀條）
     for (const e of w.enemies) { if (e.cast) drawTelegraph(e.cast, cx, cy); }
     for (const c of w.casts) drawTelegraph(c, cx, cy);
@@ -643,6 +736,8 @@
     for (const e of w.enemies) {
       if (e.hp <= 0) continue;
       const x = e.x - cx, y = e.y - cy;
+      // 空中的 Boss（跳躍中）：只畫地面陰影，本體不可見/不可被擊中
+      if (e.airborne) { ctx.globalAlpha = .3; ctx.fillStyle = "#000"; ctx.beginPath(); ctx.ellipse(x, y, e.r * .8, e.r * .4, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; continue; }
       // Boss 蓄力大招：閃紅且越閃越快
       let bodyCol = e.hitFlash > 0 ? "#fff" : e.color;
       if (e.boss && e.ultState === "windup") {
@@ -774,6 +869,16 @@
       ctx.fillStyle = warn ? "#ff4040" : "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
       ctx.fillText("👑 " + w.boss.name + (warn ? "　⚠ 大招蓄力！" : ""), bx + bw / 2, by - 4); ctx.textAlign = "left";
     }
+
+    // 回城進度
+    if (recalling) {
+      const prog = U.clamp(1 - recallT / 1.8, 0, 1), bw = 200, bx = (W - bw) / 2, by = H * 0.5;
+      ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(bx, by, bw, 16);
+      ctx.fillStyle = "#3ad0ff"; ctx.fillRect(bx, by, bw * prog, 16);
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 16);
+      ctx.fillStyle = "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
+      ctx.fillText("回城中…", W / 2, by - 6); ctx.textAlign = "left";
+    }
   }
 
   // ---------- 小地圖 ----------
@@ -832,7 +937,7 @@
 
   // ---------- 死亡 ----------
   G.onPlayerDeath = function () {
-    dead = true;
+    dead = true; recalling = false;
     document.getElementById("deathScreen").classList.add("show");
   };
   function respawn() {
@@ -867,6 +972,9 @@
     document.getElementById("talBtn").onclick = G.openTalents;
     document.getElementById("bagClose").onclick = G.closeBag;
     document.getElementById("talClose").onclick = G.closeTalents;
+    document.getElementById("shopBtn").onclick = G.openShop;
+    document.getElementById("shopClose").onclick = G.closeShop;
+    document.getElementById("recallBtn").onclick = startRecall;
     document.getElementById("startBtn").onclick = beginGame;
     document.getElementById("respawnBtn").onclick = respawn;
     const ct = document.getElementById("ctrlToggle");

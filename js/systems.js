@@ -99,9 +99,35 @@
   // 簡易品質評分（用於背包排序/比較提示）
   G.itemScore = function (item) {
     if (!item) return 0;
-    let s = G.RARITY_ORDER.indexOf(item.rarity) * 100;
+    let s = G.RARITY_ORDER.indexOf(item.rarity) * 100 + (item.plus || 0) * 30;
     for (const af of item.affixes) s += af.value;
     return s;
+  };
+
+  // ===== 城鎮商店：強化 / 賭裝 =====
+  G.MAX_PLUS = 12;
+  G.enhanceCost = function (item) {
+    const rar = G.RARITY_ORDER.indexOf(item.rarity);
+    return Math.round(30 * Math.pow(1.55, item.plus || 0) * (1 + rar * 0.6));
+  };
+  G.enhanceItem = function (item) {
+    if ((item.plus || 0) >= G.MAX_PLUS) { G.toast("已達強化上限 +" + G.MAX_PLUS); return false; }
+    const c = G.enhanceCost(item);
+    if (G.save.gold < c) { G.toast("金幣不足（需 " + c + "）"); return false; }
+    G.save.gold -= c; item.plus = (item.plus || 0) + 1;
+    G.computeStats(); G.persist(); if (G.refreshHud) G.refreshHud();
+    G.toast("強化成功！" + item.baseName + " +" + item.plus);
+    return true;
+  };
+  G.gambleCost = function () { return 60 + G.save.level * 15; };
+  G.gamble = function (slot) {
+    const c = G.gambleCost();
+    if (G.save.gold < c) { G.toast("金幣不足（需 " + c + "）"); return null; }
+    G.save.gold -= c;
+    const it = G.rollItem(G.save.level + 2, slot, null, 12 + G.save.level);
+    G.addToBag(it); // 內含 persist / 提示
+    if (G.refreshHud) G.refreshHud();
+    return it;
   };
 
   // ================= 數值聚合 =================
@@ -113,7 +139,7 @@
     let maxHp = 100 + (lv - 1) * 12;
     let dmg = 10 + (lv - 1) * 2.2;
     let atkSpdPct = 0, dmgPct = 0, critPct = 5, critDmgPct = 50, movePct = 0;
-    let projectiles = 1, pierce = 0, armorFlat = 0, hpFlat = 0;
+    let projectiles = 1, pierce = 0, armorFlat = 0, hpFlat = 0, minionPct = 0, rangePct = 0;
     const procs = { chain: 0, critboom: 0, lifesteal: 0, frost: 0, burn: 0, thorns: 0, regen: 0, storm: 0, killHeal: 0 };
 
     function addStat(stat, v) {
@@ -127,13 +153,16 @@
         case "projectiles": projectiles += v; break;
         case "pierce": pierce += v; break;
         case "armorFlat": armorFlat += v; break;
+        case "minionPct": minionPct += v; break;
+        case "rangePct": rangePct += v; break;
       }
     }
 
-    // 裝備詞條
+    // 裝備詞條（強化等級 plus 提升所有詞條數值）
     for (const slot of G.SLOTS) {
       const it = s.equipped[slot];
       if (!it) continue;
+      const mul = 1 + (it.plus || 0) * 0.08;
       for (const af of it.affixes) {
         if (af.legend) {
           // 傳奇專屬特效
@@ -144,8 +173,9 @@
           continue;
         }
         const def = G.AFFIXES[af.id];
-        if (def.kind === "stat") addStat(def.stat, af.value);
-        else procs[af.id] = (procs[af.id] || 0) + af.value;
+        const val = (def.stat === "projectiles" || def.stat === "pierce") ? af.value : Math.round(af.value * mul);
+        if (def.kind === "stat") addStat(def.stat, val);
+        else procs[af.id] = (procs[af.id] || 0) + val;
       }
     }
     // 天賦
@@ -178,6 +208,8 @@
     p.projectiles = Math.round(projectiles);
     p.pierce = Math.round(pierce);
     p.armor = armorFlat;
+    p.minionPct = minionPct;
+    p.rangePct = rangePct;
     p.procs = procs;
     p.bulletSpeed = 560;
     if (p.hp === undefined || p.hp > p.maxHp) p.hp = p.maxHp;
@@ -215,14 +247,14 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.casts = []; w.summonTimer = 1;
+    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
     G.save.area = areaId; G.persist();
     // 玩家出生點：優先放在「返回來源」的傳送門附近，否則地圖底部中央
@@ -252,6 +284,7 @@
     if (G.refreshHud) G.refreshHud();
   };
 
+  // 一般刷怪：先在地上放紅色預警標記，閃爍約 1 秒後才真正出現
   function spawnEnemy(initial) {
     const w = G.world, area = w.area;
     if (area.safe) return;
@@ -260,19 +293,32 @@
       x = rand(60, area.w - 60); y = rand(60, area.h - 60); tries++;
     } while (dist(x, y, G.player.x, G.player.y) < 280 && tries < 20);
     const typeId = pick(area.enemies);
-    const t = G.ENEMIES[typeId];
+    w.spawns.push({ x, y, typeId, t: 0, dur: 1.0, r: G.ENEMIES[typeId].r });
+  }
+  G.spawnEnemy = spawnEnemy;
+
+  // 指定座標/類型放置預警（供 Boss 召喚波使用）
+  G.spawnPendingAt = function (typeId, x, y, dur) {
+    const area = G.world.area; if (!area || area.safe) return;
+    x = clamp(x, 40, area.w - 40); y = clamp(y, 40, area.h - 40);
+    G.world.spawns.push({ x, y, typeId, t: 0, dur: dur || 0.8, r: (G.ENEMIES[typeId] || { r: 15 }).r });
+  };
+
+  // 預警結束 -> 生成實際敵人
+  G.materializeEnemy = function (typeId, x, y) {
+    const w = G.world, area = w.area;
+    const t = G.ENEMIES[typeId]; if (!t) return;
     const lvScale = 1 + area.level * 0.18;
     w.enemies.push({
       typeId, name: t.name, x, y, r: t.r, color: t.color,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
-      dmg: Math.round(t.dmg * (1 + area.level * 0.12)), speed: t.speed,
+      dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: t.gold,
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
       slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: false,
       cast: null, castCd: rand(0.6, 1.6), dashT: 0, dvx: 0, dvy: 0,
     });
-  }
-  G.spawnEnemy = spawnEnemy;
+  };
 
   function spawnBoss(px, py) {
     const w = G.world, area = w.area;
@@ -290,6 +336,7 @@
       attacks: t.attacks || ["aimVolley"], ults: t.ults || ["novaRing"],
       emitters: [], ultState: "move", ultT: 0, ultDur: 0, ultActiveT: 0, ultMin: 1.2,
       atkCd: rand(1.4, 2.4), ultCd: rand(6, 9),
+      tier: Math.max(0, Math.round(area.level / 7)), airborne: false,
     };
     w.enemies.push(b); w.boss = b; w.bossSpawned = true;
     G.toast("👑 " + t.name + " 出現了！");

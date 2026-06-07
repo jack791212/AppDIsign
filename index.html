@@ -26,6 +26,8 @@
 
 <!-- 側邊按鈕 -->
 <div id="sidebtns">
+  <div class="iconbtn" id="shopBtn" style="display:none">🏪</div>
+  <div class="iconbtn" id="recallBtn">🏠</div>
   <div class="iconbtn" id="talBtn">🌳<span class="badge" id="talBadge" style="display:none">0</span></div>
   <div class="iconbtn" id="bagBtn">🎒<span class="badge" id="bagBadge" style="display:none">0</span></div>
 </div>
@@ -64,6 +66,23 @@
   </div>
   <div id="talPts" style="text-align:center;font-size:15px;font-weight:700;color:#7af5d0;margin-bottom:10px">可用天賦點：0</div>
   <div class="scroll"><div id="talCols"></div></div>
+</div>
+
+<!-- 城鎮商店 -->
+<div class="panel" id="shopPanel">
+  <div class="head">
+    <h2>🏪 城鎮商店</h2>
+    <button class="closebtn" id="shopClose">✕</button>
+  </div>
+  <div style="text-align:right;font-weight:700;margin-bottom:8px" id="shopGold">🪙 0</div>
+  <div class="scroll">
+    <h3 style="font-size:15px;color:#ffd166;margin:6px 0">🎲 賭裝（隨機部位裝備）</h3>
+    <div style="font-size:12px;color:#9b8fc0;margin-bottom:8px" id="gambleHint">每次花費 — 金幣，隨機詞條，越高等越好</div>
+    <div id="gambleRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px"></div>
+    <h3 style="font-size:15px;color:#7af5d0;margin:6px 0">⚒️ 強化（提升已裝備數值）</h3>
+    <div style="font-size:12px;color:#9b8fc0;margin-bottom:8px">每強化一級，該裝備所有數值 +8%（上限 +12）</div>
+    <div id="enhanceList"></div>
+  </div>
 </div>
 
 <!-- 道具彈窗 -->

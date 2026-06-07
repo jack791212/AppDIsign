@@ -16,6 +16,8 @@ G.AFFIXES = {
   multishot:{id:'multishot',name:'多重箭',  kind:'stat', stat:'projectiles',slots:['weapon'],                 roll:[1,1],   fmt:v=>`+${v} 同時射出箭數` },
   pierce:  { id:'pierce',  name:'穿透',     kind:'stat', stat:'pierce',     slots:['weapon'],                 roll:[1,2],   fmt:v=>`箭可貫穿 +${v} 名敵人` },
   armor:   { id:'armor',   name:'護甲',     kind:'stat', stat:'armorFlat',  slots:['armor','helmet'],         roll:[3,10],  fmt:v=>`+${v} 護甲（減傷）` },
+  summon:  { id:'summon',  name:'召喚強化', kind:'stat', stat:'minionPct',  slots:['weapon','ring','helmet'], roll:[10,28], fmt:v=>`+${v}% 召喚物傷害` },
+  range:   { id:'range',   name:'攻擊範圍', kind:'stat', stat:'rangePct',   slots:['weapon','armor'],         roll:[8,20],  fmt:v=>`+${v}% 攻擊範圍（近戰受益大）` },
 
   // --- 特效詞條 PROC（玩法核心，可疊加） ---
   chain:    { id:'chain',    name:'連鎖閃電', kind:'proc', slots:['weapon','ring'],  roll:[20,45], fmt:v=>`命中有 ${v}% 機率閃電跳至附近敵人` },
@@ -37,11 +39,12 @@ G.LEGEND_AFFIXES = {
 
 // ============ 武器類型 WEAPON TYPES ============
 // 裝備的武器決定攻擊方式。dmgMul=傷害倍率 spdMul=攻速倍率(越高越快) critAdd=額外暴擊率
+// 近戰較危險，故傷害倍率高於遠程
 G.WEAPON_TYPES = {
   bow:    { name:'弓',     ic:'🏹', cls:'ranged', dmgMul:1.0,  spdMul:1.0,  critAdd:0,  desc:'平衡的直線射擊' },
-  sword:  { name:'雙手劍', ic:'⚔️', cls:'melee',  dmgMul:2.0,  spdMul:0.5,  critAdd:0,  reach:108, arcHalf:1.05, desc:'大範圍揮砍，傷害高、攻速慢' },
-  dagger: { name:'匕首',   ic:'🗡️', cls:'melee',  dmgMul:0.95, spdMul:1.7,  critAdd:18, reach:140, arcHalf:0.30, desc:'快速深刺、範圍窄、暴擊高' },
-  staff:  { name:'法杖',   ic:'🪄', cls:'ranged', dmgMul:1.35, spdMul:0.85, critAdd:0,  homing:true, desc:'發射追蹤法球' },
+  sword:  { name:'雙手劍', ic:'⚔️', cls:'melee',  dmgMul:2.6,  spdMul:0.5,  critAdd:0,  reach:115, arcHalf:1.05, desc:'大範圍揮砍，傷害極高、攻速慢' },
+  dagger: { name:'匕首',   ic:'🗡️', cls:'melee',  dmgMul:1.3,  spdMul:1.7,  critAdd:18, reach:145, arcHalf:0.30, desc:'快速深刺、範圍窄、暴擊高' },
+  staff:  { name:'法杖',   ic:'🪄', cls:'ranged', dmgMul:1.2,  spdMul:0.85, critAdd:0,  homing:true, desc:'發射追蹤法球' },
   book:   { name:'法書',   ic:'📖', cls:'summon', dmgMul:1.0,  spdMul:1.0,  critAdd:0,  summonCap:3, desc:'召喚史萊姆助戰（上限 3）' },
 };
 
@@ -77,22 +80,22 @@ G.RARITY_ORDER = ['common','magic','rare','legend'];
 
 // ============ 敵人 ENEMY TYPES ============
 G.ENEMIES = {
-  slime: { name:'史萊姆', r:15, color:'#5fc46b', hp:24, dmg:8,  speed:55,  xp:4,  gold:2, behavior:'chase' },
-  bat:   { name:'蝙蝠',   r:13, color:'#9b6bff', hp:16, dmg:6,  speed:95,  xp:5,  gold:2, behavior:'chase' },
-  archer:{ name:'骷髏弓手',r:14, color:'#d9d2c0', hp:22, dmg:9,  speed:45,  xp:7,  gold:4, behavior:'ranged' },
-  brute: { name:'石魔',   r:22, color:'#a06a3a', hp:70, dmg:16, speed:48,  xp:14, gold:8, behavior:'chase' },
+  slime: { name:'史萊姆', r:15, color:'#5fc46b', hp:24, dmg:14, speed:55,  xp:4,  gold:2, behavior:'chase' },
+  bat:   { name:'蝙蝠',   r:13, color:'#9b6bff', hp:16, dmg:11, speed:95,  xp:5,  gold:2, behavior:'chase' },
+  archer:{ name:'骷髏弓手',r:14, color:'#d9d2c0', hp:22, dmg:15, speed:45,  xp:7,  gold:4, behavior:'ranged' },
+  brute: { name:'石魔',   r:22, color:'#a06a3a', hp:70, dmg:28, speed:48,  xp:14, gold:8, behavior:'chase' },
   // 使用「攻擊範圍讀條」的新型敵人
-  bomber:  { name:'自爆蟲', r:15, color:'#ff8a3a', hp:26, dmg:18, speed:92, xp:9,  gold:4, behavior:'bomber' },
-  charger: { name:'衝鋒獸', r:19, color:'#d94f9c', hp:55, dmg:20, speed:68, xp:13, gold:7, behavior:'charger' },
-  striker: { name:'利爪兵', r:16, color:'#c0683a', hp:42, dmg:14, speed:78, xp:11, gold:5, behavior:'striker' },
+  bomber:  { name:'自爆蟲', r:15, color:'#ff8a3a', hp:26, dmg:30, speed:92, xp:9,  gold:4, behavior:'bomber' },
+  charger: { name:'衝鋒獸', r:19, color:'#d94f9c', hp:55, dmg:32, speed:68, xp:13, gold:7, behavior:'charger' },
+  striker: { name:'利爪兵', r:16, color:'#c0683a', hp:42, dmg:24, speed:78, xp:11, gold:5, behavior:'striker' },
 };
 // Boss：attacks=普攻模式池、ults=三種專屬大招（蓄力後隨機施放）
 G.BOSSES = {
-  forestKing: { name:'森林之王', r:40, color:'#2e8b57', hp:900,   dmg:18, speed:60, xp:220,  gold:120,  behavior:'boss', attacks:['aimVolley','ring'],                    ults:['novaRing','meteorRain','sectorSweep'] },
-  ruinLord:   { name:'廢墟領主', r:46, color:'#8a2be2', hp:2200,  dmg:26, speed:62, xp:600,  gold:400,  behavior:'boss', attacks:['aimVolley','spiral','sectorSlash'],      ults:['crossBeams','bulletRings','novaRing'] },
-  magmaLord:  { name:'熔岩魔王', r:48, color:'#ff5a2a', hp:4800,  dmg:34, speed:64, xp:1400, gold:900,  behavior:'boss', attacks:['ring','aimBurst','spiral'],             ults:['meteorRain','spiralStorm','crossBeams'] },
-  frostQueen: { name:'冰霜女王', r:50, color:'#5fd0ff', hp:9000,  dmg:44, speed:66, xp:3200, gold:2000, behavior:'boss', attacks:['aimVolley','wallRect','ring'],          ults:['bulletRings','sectorSweep','novaRing'] },
-  abyssKing:  { name:'深淵君主', r:54, color:'#b23cff', hp:17000, dmg:56, speed:70, xp:8000, gold:5000, behavior:'boss', attacks:['spiral','aimBurst','wallRect','ring'],   ults:['crossBeams','spiralStorm','meteorRain'] },
+  forestKing: { name:'森林之王', r:40, color:'#2e8b57', hp:900,   dmg:18, speed:60, xp:220,  gold:120,  behavior:'boss', attacks:['aimVolley','ring','coneBurst'],                    ults:['novaRing','meteorRain','jumpSlam'] },
+  ruinLord:   { name:'廢墟領主', r:46, color:'#8a2be2', hp:2200,  dmg:26, speed:62, xp:600,  gold:400,  behavior:'boss', attacks:['aimVolley','spiral','sectorSlash','homingOrbs'], ults:['crossBeams','bulletRings','bomberSwarm','jumpSlam'] },
+  magmaLord:  { name:'熔岩魔王', r:48, color:'#ff5a2a', hp:4800,  dmg:34, speed:64, xp:1400, gold:900,  behavior:'boss', attacks:['ring','aimBurst','spiral','coneBurst'],          ults:['meteorRain','megaCharge','jumpCross','homingBloom'] },
+  frostQueen: { name:'冰霜女王', r:50, color:'#5fd0ff', hp:9000,  dmg:44, speed:66, xp:3200, gold:2000, behavior:'boss', attacks:['aimVolley','wallRect','ring','twinSpiral'],     ults:['bulletRings','fieldSweepH','boxTrap','homingBloom','jumpCross'] },
+  abyssKing:  { name:'深淵君主', r:54, color:'#b23cff', hp:17000, dmg:56, speed:70, xp:8000, gold:5000, behavior:'boss', attacks:['spiral','aimBurst','wallRect','homingOrbs','coneBurst'], ults:['crossBeams','spiralPlusRing','jumpCross','fieldSweepV','chargerRush','meteorRain'] },
 };
 
 // ============ 地圖區域 AREAS ============
