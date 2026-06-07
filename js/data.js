@@ -86,13 +86,17 @@ G.ENEMIES = {
   charger: { name:'衝鋒獸', r:19, color:'#d94f9c', hp:55, dmg:20, speed:68, xp:13, gold:7, behavior:'charger' },
   striker: { name:'利爪兵', r:16, color:'#c0683a', hp:42, dmg:14, speed:78, xp:11, gold:5, behavior:'striker' },
 };
+// Boss：attacks=普攻模式池、ults=三種專屬大招（蓄力後隨機施放）
 G.BOSSES = {
-  forestKing: { name:'森林之王', r:40, color:'#2e8b57', hp:900, dmg:24, speed:55, xp:200, gold:120, behavior:'boss' },
-  ruinLord:   { name:'廢墟領主', r:46, color:'#8a2be2', hp:2200,dmg:36, speed:60, xp:600, gold:400, behavior:'boss' },
+  forestKing: { name:'森林之王', r:40, color:'#2e8b57', hp:900,   dmg:18, speed:60, xp:220,  gold:120,  behavior:'boss', attacks:['aimVolley','ring'],                    ults:['novaRing','meteorRain','sectorSweep'] },
+  ruinLord:   { name:'廢墟領主', r:46, color:'#8a2be2', hp:2200,  dmg:26, speed:62, xp:600,  gold:400,  behavior:'boss', attacks:['aimVolley','spiral','sectorSlash'],      ults:['crossBeams','bulletRings','novaRing'] },
+  magmaLord:  { name:'熔岩魔王', r:48, color:'#ff5a2a', hp:4800,  dmg:34, speed:64, xp:1400, gold:900,  behavior:'boss', attacks:['ring','aimBurst','spiral'],             ults:['meteorRain','spiralStorm','crossBeams'] },
+  frostQueen: { name:'冰霜女王', r:50, color:'#5fd0ff', hp:9000,  dmg:44, speed:66, xp:3200, gold:2000, behavior:'boss', attacks:['aimVolley','wallRect','ring'],          ults:['bulletRings','sectorSweep','novaRing'] },
+  abyssKing:  { name:'深淵君主', r:54, color:'#b23cff', hp:17000, dmg:56, speed:70, xp:8000, gold:5000, behavior:'boss', attacks:['spiral','aimBurst','wallRect','ring'],   ults:['crossBeams','spiralStorm','meteorRain'] },
 };
 
 // ============ 地圖區域 AREAS ============
-// 地圖為正方形（w===h），小地圖也呈正方形
+// 地圖為正方形（w===h），小地圖也呈正方形；難度逐區遞增
 // safe=城鎮不刷怪；reqLevel=傳送門解鎖等級需求
 G.AREAS = {
   town: {
@@ -107,7 +111,22 @@ G.AREAS = {
   ruins: {
     name:'遠古廢墟', w:2200, h:2200, bg:'#1a141f', level:7,
     enemies:['bat','archer','brute','charger','striker','bomber'], maxAlive:9, boss:'ruinLord', bossAt:{x:1100,y:320},
-    portals:[ {to:'forest', x:1100, y:2050, name:'返回森林'} ],
+    portals:[ {to:'forest', x:1100, y:2050, name:'返回森林'}, {to:'cavern', x:1100, y:180, name:'熔岩洞窟', reqLevel:13} ],
+  },
+  cavern: {
+    name:'熔岩洞窟', w:2400, h:2400, bg:'#241010', level:14,
+    enemies:['archer','brute','charger','striker','bomber'], maxAlive:10, boss:'magmaLord', bossAt:{x:1200,y:340},
+    portals:[ {to:'ruins', x:1200, y:2250, name:'返回廢墟'}, {to:'glacier', x:1200, y:190, name:'冰封峽谷', reqLevel:20} ],
+  },
+  glacier: {
+    name:'冰封峽谷', w:2600, h:2600, bg:'#0e1a24', level:22,
+    enemies:['bat','archer','brute','charger','striker'], maxAlive:11, boss:'frostQueen', bossAt:{x:1300,y:360},
+    portals:[ {to:'cavern', x:1300, y:2450, name:'返回洞窟'}, {to:'abyss', x:1300, y:200, name:'暗影深淵', reqLevel:30} ],
+  },
+  abyss: {
+    name:'暗影深淵', w:2800, h:2800, bg:'#140a1c', level:32,
+    enemies:['archer','brute','charger','striker','bomber'], maxAlive:12, boss:'abyssKing', bossAt:{x:1400,y:380},
+    portals:[ {to:'glacier', x:1400, y:2650, name:'返回峽谷'} ],
   },
 };
 

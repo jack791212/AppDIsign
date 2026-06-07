@@ -215,14 +215,14 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.summonTimer = 1;
+    w.swings = []; w.minions = []; w.casts = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
     G.save.area = areaId; G.persist();
     // 玩家出生點：優先放在「返回來源」的傳送門附近，否則地圖底部中央
@@ -273,6 +273,10 @@
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: t.dmg, speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
       behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: true,
+      cast: null, castCd: 0, dashT: 0, dvx: 0, dvy: 0,
+      attacks: t.attacks || ["aimVolley"], ults: t.ults || ["novaRing"],
+      emitters: [], ultState: "move", ultT: 0, ultDur: 0, ultActiveT: 0, ultMin: 1.2,
+      atkCd: rand(1.4, 2.4), ultCd: rand(6, 9),
     };
     w.enemies.push(b); w.boss = b; w.bossSpawned = true;
     G.toast("👑 " + t.name + " 出現了！");

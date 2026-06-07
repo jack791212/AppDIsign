@@ -197,6 +197,80 @@
     ctx.restore();
   }
 
+  // ---------- Boss 戰鬥：彈幕 / 攻擊模式 / 大招（可重用）----------
+  function angTo(e) { return Math.atan2(G.player.y - e.y, G.player.x - e.x); }
+  function bossShot(x, y, ang, speed, dmg, opts) {
+    const s = { x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, dmg, life: 4.5, r: 7, color: "#ff5470", turn: 0, accel: 0 };
+    if (opts) Object.assign(s, opts);
+    G.world.foeShots.push(s);
+  }
+  function addEmitter(e, em) { e.emitters.push(Object.assign({ t: 0, acc: 0, n: 0 }, em)); }
+  function addFreeCast(cfg) { G.world.casts.push(Object.assign({ t: 0, fired: false, dmg: 0, arcHalf: 0, radius: 0, length: 0, width: 0, ang: 0 }, cfg)); }
+
+  // 普攻模式池
+  const ATTACKS = {
+    aimVolley(e) { const a = angTo(e); for (let i = -2; i <= 2; i++) bossShot(e.x, e.y, a + i * 0.16, 260, e.dmg, { r: 7 }); },
+    ring(e) { const n = 16, off = Math.random() * Math.PI; for (let i = 0; i < n; i++) bossShot(e.x, e.y, off + i / n * Math.PI * 2, 200, e.dmg, { r: 7, color: "#ff7aa0" }); },
+    spiral(e) { addEmitter(e, { dur: 1.3, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.08) { em.acc -= 0.08; em.ang += 0.5; bossShot(en.x, en.y, em.ang, 230, en.dmg, { r: 6, color: "#ffd166" }); bossShot(en.x, en.y, em.ang + Math.PI, 230, en.dmg, { r: 6, color: "#ffd166" }); } } }); },
+    aimBurst(e) { addEmitter(e, { dur: 0.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.14 && em.n < 4) { em.acc -= 0.14; em.n++; bossShot(en.x, en.y, angTo(en), 330, en.dmg, { r: 8 }); } } }); },
+    wallRect(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 380, width: 66, dur: 1.0, dmg: e.dmg * 1.3 }); },
+    sectorSlash(e) { addFreeCast({ shape: "sector", ox: e.x, oy: e.y, ang: angTo(e), radius: 160, arcHalf: Math.PI / 6, dur: 0.7, dmg: e.dmg * 1.2 }); },
+  };
+
+  // 大招（每個 Boss 三選一）
+  const ULTS = {
+    novaRing(e) { // 大範圍齊發兩圈 + 近身爆炸圈
+      for (let wv = 0; wv < 2; wv++) { const n = 24; for (let i = 0; i < n; i++) bossShot(e.x, e.y, wv * 0.13 + i / n * Math.PI * 2, 160 + wv * 60, e.dmg, { r: 8 }); }
+      addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 150, dur: 0.9, dmg: e.dmg * 1.6 });
+      G.shake(8, .3); e.ultMin = 1.2;
+    },
+    meteorRain(e) { // 連續圓形隕石砸向玩家周圍
+      e.ultMin = 2.8;
+      addEmitter(e, { dur: 2.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.22) { em.acc -= 0.22; const p = G.player; addFreeCast({ shape: "circle", ox: p.x + U.rand(-170, 170), oy: p.y + U.rand(-170, 170), radius: 66, dur: 0.85, dmg: en.dmg * 1.3 }); } } });
+    },
+    sectorSweep(e) { // 連續三道大扇形
+      e.ultMin = 2.0;
+      addEmitter(e, { dur: 1.9, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.55 && em.n < 3) { em.acc -= 0.55; em.n++; addFreeCast({ shape: "sector", ox: en.x, oy: en.y, ang: angTo(en) + U.rand(-.3, .3), radius: 250, arcHalf: Math.PI / 3, dur: 0.8, dmg: en.dmg * 1.4 }); } } });
+    },
+    crossBeams(e) { // 十字矩形光束，兩波交錯
+      const fire = (rot) => { for (let k = 0; k < 4; k++) addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: rot + k * Math.PI / 2, length: 760, width: 72, dur: 1.1, dmg: e.dmg * 1.5 }); };
+      fire(Math.random() * Math.PI); e.ultMin = 1.9;
+      addEmitter(e, { dur: 1.8, fn(en, dt, em) { if (!em.n && em.t >= 1.5) { em.n = 1; fire(Math.PI / 4); } } });
+    },
+    bulletRings(e) { // 多重環齊發 + 連射
+      e.ultMin = 2.0;
+      addEmitter(e, { dur: 1.9, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.5 && em.n < 3) { em.acc -= 0.5; em.n++; const cnt = 18 + em.n * 2, off = em.n * 0.2; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, off + i / cnt * Math.PI * 2, 185, en.dmg, { r: 7, color: "#a0e0ff" }); } } });
+    },
+    spiralStorm(e) { // 長時間三臂螺旋彈幕
+      e.ultMin = 3.1;
+      addEmitter(e, { dur: 3.0, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.06) { em.acc -= 0.06; em.ang += 0.42; for (let arm = 0; arm < 3; arm++) bossShot(en.x, en.y, em.ang + arm * Math.PI * 2 / 3, 210, en.dmg, { r: 6, color: "#c77dff" }); } } });
+    },
+  };
+
+  function updateBoss(e, dt) {
+    const p = G.player;
+    const a = angTo(e), d = U.dist(e.x, e.y, p.x, p.y);
+    // 持續執行發射器
+    for (let i = e.emitters.length - 1; i >= 0; i--) { const em = e.emitters[i]; em.t += dt; em.fn(e, dt, em); if (em.t >= em.dur) e.emitters.splice(i, 1); }
+
+    if (e.ultState === "windup") {
+      e.ultT += dt;
+      if (e.ultT >= e.ultDur) { const id = U.pick(e.ults); (ULTS[id] || ULTS.novaRing)(e); e.ultState = "active"; e.ultActiveT = 0; }
+      return; // 蓄力時不動、不普攻
+    }
+    if (e.ultState === "active") {
+      e.ultActiveT += dt;
+      if (e.emitters.length === 0 && e.ultActiveT >= (e.ultMin || 1.2)) { e.ultState = "move"; e.ultCd = U.rand(7, 11); }
+      return;
+    }
+    // move：靠近並普攻
+    if (d > 200) { e.x += Math.cos(a) * e.baseSpeed * dt; e.y += Math.sin(a) * e.baseSpeed * dt; }
+    e.atkCd -= dt;
+    if (e.atkCd <= 0) { const id = U.pick(e.attacks); (ATTACKS[id] || ATTACKS.aimVolley)(e); e.atkCd = U.rand(1.5, 2.6); }
+    e.ultCd -= dt;
+    if (e.ultCd <= 0) { e.ultState = "windup"; e.ultT = 0; e.ultDur = 1.9; }
+  }
+
   // ---------- 更新 ----------
   function update(dt) {
     const w = G.world, p = G.player, area = w.area;
@@ -314,9 +388,7 @@
             break;
           }
           case "boss": {
-            e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt;
-            e.fireCd -= dt;
-            if (e.fireCd <= 0) { for (let k = -1; k <= 1; k++) enemyShoot(e, a + k * 0.25); e.fireCd = 1.8; }
+            updateBoss(e, dt);
             break;
           }
           case "bomber": {
@@ -373,12 +445,21 @@
       if (m.hp <= 0) { G.burst(m.x, m.y, "#5fc46b", 8); w.minions.splice(i, 1); }
     }
 
-    // 敵人子彈
+    // 敵人子彈（支援轉向 turn / 加速 accel 等特殊軌跡）
     for (let i = w.foeShots.length - 1; i >= 0; i--) {
       const s = w.foeShots[i];
+      if (s.turn) { const ang = Math.atan2(s.vy, s.vx) + s.turn * dt, sp = Math.hypot(s.vx, s.vy); s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp; }
+      if (s.accel) { const ang = Math.atan2(s.vy, s.vx), sp = Math.hypot(s.vx, s.vy) + s.accel * dt; s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp; }
       s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-      if (s.life <= 0 || s.x < -20 || s.x > area.w + 20 || s.y < -20 || s.y > area.h + 20) { w.foeShots.splice(i, 1); continue; }
+      if (s.life <= 0 || s.x < -30 || s.x > area.w + 30 || s.y < -30 || s.y > area.h + 30) { w.foeShots.splice(i, 1); continue; }
       if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null); w.foeShots.splice(i, 1); }
+    }
+
+    // 自由攻擊讀條（Boss 大招/陷阱用，與敵人無綁定）
+    for (let i = w.casts.length - 1; i >= 0; i--) {
+      const c = w.casts[i]; c.t += dt;
+      if (!c.fired && c.t >= c.dur) { c.fired = true; if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null); G.burst(c.ox, c.oy, "#ff6644", 12); G.shake(3, .1); }
+      if (c.t >= c.dur + 0.12) w.casts.splice(i, 1);
     }
 
     // 粒子
@@ -505,21 +586,34 @@
     }
     ctx.globalAlpha = 1;
 
-    // 敵人子彈
+    // 敵人子彈（依各自顏色/大小）
     for (const s of w.foeShots) {
-      ctx.fillStyle = "#ff5470"; ctx.beginPath(); ctx.arc(s.x - cx, s.y - cy, s.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = s.color || "#ff5470"; ctx.beginPath(); ctx.arc(s.x - cx, s.y - cy, s.r, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 1.5; ctx.stroke();
     }
 
-    // 攻擊範圍讀條（在敵人下方繪製）
+    // 攻擊範圍讀條（敵人讀條 + Boss 大招自由讀條）
     for (const e of w.enemies) { if (e.cast) drawTelegraph(e.cast, cx, cy); }
+    for (const c of w.casts) drawTelegraph(c, cx, cy);
 
     // 敵人
     for (const e of w.enemies) {
       if (e.hp <= 0) continue;
       const x = e.x - cx, y = e.y - cy;
-      ctx.fillStyle = e.hitFlash > 0 ? "#fff" : e.color;
+      // Boss 蓄力大招：閃紅且越閃越快
+      let bodyCol = e.hitFlash > 0 ? "#fff" : e.color;
+      if (e.boss && e.ultState === "windup") {
+        const prog = U.clamp(e.ultT / e.ultDur, 0, 1);
+        if (Math.sin(e.ultT * (6 + prog * 40)) > 0) bodyCol = "#ff2020";
+      }
+      ctx.fillStyle = bodyCol;
       ctx.beginPath(); ctx.arc(x, y, e.r, 0, Math.PI * 2); ctx.fill();
+      if (e.boss && e.ultState === "windup") {
+        const prog = U.clamp(e.ultT / e.ultDur, 0, 1);
+        ctx.globalAlpha = 0.4 + 0.4 * Math.abs(Math.sin(e.ultT * (6 + prog * 40)));
+        ctx.strokeStyle = "#ff3030"; ctx.lineWidth = 3 + prog * 4;
+        ctx.beginPath(); ctx.arc(x, y, e.r + 6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      }
       ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 2; ctx.stroke();
       if (e.slowT > 0) { ctx.strokeStyle = "#7fdfff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, e.r + 3, 0, Math.PI * 2); ctx.stroke(); }
       if (e.burnT > 0) { ctx.fillStyle = "rgba(255,120,40,.5)"; ctx.beginPath(); ctx.arc(x, y - e.r, 3, 0, Math.PI * 2); ctx.fill(); }
@@ -633,8 +727,9 @@
       ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx, by, bw, 14);
       ctx.fillStyle = "#e0457a"; ctx.fillRect(bx, by, bw * (w.boss.hp / w.boss.maxHp), 14);
       ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 14);
-      ctx.fillStyle = "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
-      ctx.fillText("👑 " + w.boss.name, bx + bw / 2, by - 4); ctx.textAlign = "left";
+      const warn = w.boss.ultState === "windup";
+      ctx.fillStyle = warn ? "#ff4040" : "#fff"; ctx.font = "700 13px system-ui"; ctx.textAlign = "center";
+      ctx.fillText("👑 " + w.boss.name + (warn ? "　⚠ 大招蓄力！" : ""), bx + bw / 2, by - 4); ctx.textAlign = "left";
     }
   }
 
