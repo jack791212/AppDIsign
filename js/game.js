@@ -48,19 +48,52 @@
   window.addEventListener("mousemove", (e) => { if (mouseDown) pMove(e.clientX, e.clientY); });
   window.addEventListener("mouseup", () => { mouseDown = false; pEnd(); });
 
-  // ---------- 開火 ----------
-  function fireBullets() {
+  // ---------- 攻擊（依武器類型分流）----------
+  function nearestEnemy(x, y) {
+    let t = null, b = Infinity;
+    for (const e of G.world.enemies) { if (e.hp <= 0) continue; const d = U.dist(x, y, e.x, e.y); if (d < b) { b = d; t = e; } }
+    return t;
+  }
+  function playerAttack() {
+    const cls = G.player.weaponClass;
+    if (cls === "melee") meleeSwing();
+    else if (cls === "summon") { /* 召喚由 summon timer 處理，不直接攻擊 */ }
+    else fireProjectiles(G.player.weaponType === "staff");
+  }
+  // 弓 / 法杖：發射投射物（法杖為追蹤）
+  function fireProjectiles(homing) {
     const w = G.world, p = G.player;
-    let target = null, best = Infinity;
-    for (const e of w.enemies) { const d = U.dist(p.x, p.y, e.x, e.y); if (d < best) { best = d; target = e; } }
-    if (!target) return;
-    const baseAng = Math.atan2(target.y - p.y, target.x - p.x);
-    p.facing = baseAng;
+    const tgt = nearestEnemy(p.x, p.y); if (!tgt) return;
+    const baseAng = Math.atan2(tgt.y - p.y, tgt.x - p.x); p.facing = baseAng;
     const n = p.projectiles, spread = 0.15;
+    const sp = homing ? p.bulletSpeed * 0.65 : p.bulletSpeed;
     for (let i = 0; i < n; i++) {
       const a = baseAng + (i - (n - 1) / 2) * spread;
-      w.bullets.push({ x: p.x + Math.cos(a) * p.r, y: p.y + Math.sin(a) * p.r, vx: Math.cos(a) * p.bulletSpeed, vy: Math.sin(a) * p.bulletSpeed, life: 1.4, pierce: p.pierce, hits: [] });
+      w.bullets.push({ x: p.x + Math.cos(a) * p.r, y: p.y + Math.sin(a) * p.r, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: homing ? 2.4 : 1.4, pierce: p.pierce, hits: [], homing: !!homing });
     }
+  }
+  // 雙手劍 / 匕首：近戰扇形揮砍
+  function meleeSwing() {
+    const w = G.world, p = G.player, WT = p.weapon;
+    const tgt = nearestEnemy(p.x, p.y);
+    const baseAng = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing;
+    p.facing = baseAng;
+    const reach = WT.reach || 100, arcHalf = WT.arcHalf || 1;
+    for (const e of w.enemies.slice()) {
+      if (e.hp <= 0) continue;
+      if (U.dist(p.x, p.y, e.x, e.y) > reach + e.r) continue;
+      let diff = Math.atan2(e.y - p.y, e.x - p.x) - baseAng;
+      while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) <= arcHalf) G.onPlayerHit(e);
+    }
+    w.swings.push({ x: p.x, y: p.y, ang: baseAng, reach, arcHalf, life: 0.16 });
+    G.shake(3, 0.08);
+  }
+  // 法書：召喚史萊姆
+  function spawnMinion() {
+    const p = G.player;
+    const hp = 30 + G.save.level * 6;
+    G.world.minions.push({ x: p.x + U.rand(-30, 30), y: p.y + U.rand(-30, 30), r: 11, hp, maxHp: hp, atkCd: 0 });
   }
   function enemyShoot(e, ang) {
     const sp = 220;
@@ -85,9 +118,16 @@
     // 再生
     if (p.procs.regen > 0) G.healPlayer(p.procs.regen * dt);
 
-    // 自動攻擊（持續，移動中也會射箭，朝最近敵人）
+    // 自動攻擊（持續，移動中也會攻擊，朝最近敵人）
     p.cooldown -= dt;
-    if (w.enemies.length && p.cooldown <= 0) { fireBullets(); p.cooldown = p.fireInterval; }
+    if (w.enemies.length && p.cooldown <= 0) { playerAttack(); p.cooldown = p.fireInterval; }
+
+    // 法書：召喚史萊姆（上限內持續補充）
+    if (p.weaponClass === "summon") {
+      const cap = (p.weapon && p.weapon.summonCap) || 3;
+      w.summonTimer -= dt;
+      if (w.summonTimer <= 0 && w.minions.length < cap) { spawnMinion(); w.summonTimer = 2.2; }
+    }
 
     // 風暴之芯（傳奇）：每 1.5s 落雷
     if (p.procs.storm > 0) {
@@ -104,9 +144,23 @@
       }
     }
 
+    // 揮砍特效計時
+    for (let i = w.swings.length - 1; i >= 0; i--) { w.swings[i].life -= dt; if (w.swings[i].life <= 0) w.swings.splice(i, 1); }
+
     // 玩家子彈
     for (let i = w.bullets.length - 1; i >= 0; i--) {
       const b = w.bullets[i];
+      // 法球追蹤轉向
+      if (b.homing) {
+        let tg = null, bd = Infinity;
+        for (const e of w.enemies) { if (e.hp <= 0 || b.hits.includes(e)) continue; const d = U.dist(b.x, b.y, e.x, e.y); if (d < bd) { bd = d; tg = e; } }
+        if (tg) {
+          const cur = Math.atan2(b.vy, b.vx); let diff = Math.atan2(tg.y - b.y, tg.x - b.x) - cur;
+          while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
+          const na = cur + U.clamp(diff, -7 * dt, 7 * dt), sp = Math.hypot(b.vx, b.vy);
+          b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
+        }
+      }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       let dead2 = b.life <= 0 || b.x < -20 || b.x > area.w + 20 || b.y < -20 || b.y > area.h + 20;
       if (!dead2) {
@@ -161,6 +215,23 @@
       // 接觸傷害
       e.touchCd -= dt;
       if (d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e); e.touchCd = 0.6; }
+    }
+
+    // 召喚物（史萊姆）：追蹤並攻擊最近敵人
+    for (let i = w.minions.length - 1; i >= 0; i--) {
+      const m = w.minions[i];
+      const tgt = nearestEnemy(m.x, m.y);
+      if (tgt) {
+        const a = Math.atan2(tgt.y - m.y, tgt.x - m.x), d = U.dist(m.x, m.y, tgt.x, tgt.y);
+        if (d > m.r + tgt.r + 2) { m.x += Math.cos(a) * 160 * dt; m.y += Math.sin(a) * 160 * dt; }
+        m.atkCd -= dt;
+        if (d < m.r + tgt.r + 5 && m.atkCd <= 0) { G.dealDamage(tgt, p.dmg * 0.6, false); m.atkCd = 0.7; m.hp -= tgt.dmg * 0.5; }
+      } else {
+        const a = Math.atan2(p.y - m.y, p.x - m.x), d = U.dist(m.x, m.y, p.x, p.y);
+        if (d > 60) { m.x += Math.cos(a) * 160 * dt; m.y += Math.sin(a) * 160 * dt; }
+      }
+      m.x = U.clamp(m.x, m.r, area.w - m.r); m.y = U.clamp(m.y, m.r, area.h - m.r);
+      if (m.hp <= 0) { G.burst(m.x, m.y, "#5fc46b", 8); w.minions.splice(i, 1); }
     }
 
     // 敵人子彈
@@ -318,13 +389,39 @@
       }
     }
 
-    // 玩家子彈
+    // 召喚物（史萊姆）
+    for (const m of w.minions) {
+      const x = m.x - cx, y = m.y - cy;
+      ctx.fillStyle = "#5fc46b"; ctx.beginPath(); ctx.arc(x, y, m.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.3)"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x - 3, y - 2, 1.8, 0, Math.PI * 2); ctx.arc(x + 3, y - 2, 1.8, 0, Math.PI * 2); ctx.fill();
+      if (m.hp < m.maxHp) { const bw = m.r * 2; ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(x - bw / 2, y - m.r - 6, bw, 3); ctx.fillStyle = "#7af5d0"; ctx.fillRect(x - bw / 2, y - m.r - 6, bw * (m.hp / m.maxHp), 3); }
+    }
+
+    // 近戰揮砍特效
+    for (const s of w.swings) {
+      const a = U.clamp(s.life / 0.16, 0, 1);
+      ctx.save(); ctx.translate(s.x - cx, s.y - cy); ctx.rotate(s.ang);
+      ctx.globalAlpha = a * 0.45; ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, s.reach, -s.arcHalf, s.arcHalf); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1; ctx.restore();
+    }
+
+    // 玩家子彈 / 法球
     for (const b of w.bullets) {
-      const x = b.x - cx, y = b.y - cy; const ang = Math.atan2(b.vy, b.vx);
-      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-      ctx.fillStyle = "#ffe08a"; ctx.fillRect(-9, -2, 18, 4);
-      ctx.fillStyle = "#fff6c8"; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(4, -4); ctx.lineTo(4, 4); ctx.fill();
-      ctx.restore();
+      const x = b.x - cx, y = b.y - cy;
+      if (b.homing) {
+        ctx.save(); ctx.fillStyle = "#c77dff"; ctx.shadowColor = "#c77dff"; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else {
+        const ang = Math.atan2(b.vy, b.vx);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+        ctx.fillStyle = "#ffe08a"; ctx.fillRect(-9, -2, 18, 4);
+        ctx.fillStyle = "#fff6c8"; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(4, -4); ctx.lineTo(4, 4); ctx.fill();
+        ctx.restore();
+      }
     }
 
     // 玩家

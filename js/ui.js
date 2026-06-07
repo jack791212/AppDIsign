@@ -161,10 +161,12 @@
         `<div style="font-size:11px;color:#9b8fc0;margin-bottom:4px">目前 ${G.SLOT_INFO[item.slot].name}：${cur ? cur.baseName : "無"}</div>` +
         curAff + `</div>`;
     }
+    const wt = (item.slot === "weapon" && item.wtype && G.WEAPON_TYPES[item.wtype]) ? G.WEAPON_TYPES[item.wtype] : null;
+    const wline = wt ? `<div class="ibase" style="color:#ffd166">${wt.ic} ${wt.name}：${wt.desc}</div>` : "";
     card.innerHTML =
       `<div class="iname t-${r.cls}">${item.ic} ${item.baseName}</div>` +
       `<div class="ibase">${r.name} · ${G.SLOT_INFO[item.slot].name} · iLv ${item.ilvl}</div>` +
-      aff + cmp +
+      wline + aff + cmp +
       `<div class="acts">` +
       (equipped
         ? `<button class="bSell" id="popUnequip">卸下</button>`

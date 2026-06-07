@@ -35,6 +35,16 @@ G.LEGEND_AFFIXES = {
   twin:    { id:'twin',    name:'🏹雙生箭',   kind:'proc', roll:[1,1],     fmt:_=>`額外 +2 投射物，但攻速 -15%` },
 };
 
+// ============ 武器類型 WEAPON TYPES ============
+// 裝備的武器決定攻擊方式。dmgMul=傷害倍率 spdMul=攻速倍率(越高越快) critAdd=額外暴擊率
+G.WEAPON_TYPES = {
+  bow:    { name:'弓',     ic:'🏹', cls:'ranged', dmgMul:1.0,  spdMul:1.0,  critAdd:0,  desc:'平衡的直線射擊' },
+  sword:  { name:'雙手劍', ic:'⚔️', cls:'melee',  dmgMul:2.0,  spdMul:0.5,  critAdd:0,  reach:108, arcHalf:1.05, desc:'大範圍揮砍，傷害高、攻速慢' },
+  dagger: { name:'匕首',   ic:'🗡️', cls:'melee',  dmgMul:0.95, spdMul:1.7,  critAdd:18, reach:140, arcHalf:0.30, desc:'快速深刺、範圍窄、暴擊高' },
+  staff:  { name:'法杖',   ic:'🪄', cls:'ranged', dmgMul:1.35, spdMul:0.85, critAdd:0,  homing:true, desc:'發射追蹤法球' },
+  book:   { name:'法書',   ic:'📖', cls:'summon', dmgMul:1.0,  spdMul:1.0,  critAdd:0,  summonCap:3, desc:'召喚史萊姆助戰（上限 3）' },
+};
+
 // ============ 裝備基底 ITEM BASES ============
 G.SLOTS = ['weapon','armor','helmet','ring'];
 G.SLOT_INFO = {
@@ -44,7 +54,13 @@ G.SLOT_INFO = {
   ring:   { name:'飾品', ic:'💍' },
 };
 G.ITEM_BASES = {
-  weapon: [{n:'短弓',ic:'🏹'},{n:'長弓',ic:'🏹'},{n:'獵手弓',ic:'🏹'},{n:'強弓',ic:'🏹'}],
+  weapon: [
+    {n:'短弓',ic:'🏹',wtype:'bow'},   {n:'長弓',ic:'🏹',wtype:'bow'},
+    {n:'巨劍',ic:'⚔️',wtype:'sword'}, {n:'闊劍',ic:'⚔️',wtype:'sword'},
+    {n:'匕首',ic:'🗡️',wtype:'dagger'},{n:'尖刺',ic:'🗡️',wtype:'dagger'},
+    {n:'法杖',ic:'🪄',wtype:'staff'}, {n:'魔杖',ic:'🪄',wtype:'staff'},
+    {n:'法書',ic:'📖',wtype:'book'},  {n:'禁書',ic:'📖',wtype:'book'},
+  ],
   armor:  [{n:'皮甲',ic:'🛡️'},{n:'鎖甲',ic:'🛡️'},{n:'板甲',ic:'🛡️'}],
   helmet: [{n:'皮帽',ic:'⛑️'},{n:'頭盔',ic:'⛑️'},{n:'戰盔',ic:'⛑️'}],
   ring:   [{n:'戒指',ic:'💍'},{n:'護符',ic:'💍'},{n:'寶石',ic:'💍'}],
@@ -93,24 +109,24 @@ G.AREAS = {
 
 // ============ 天賦樹 TALENTS ============
 // 三向分支；每個節點消耗 1 點，max=最大等級，per=每級加成
+// 天賦僅保留「通用」加成；武器專屬能力（穿透、多重箭）改由裝備詞條提供
 G.TALENTS = {
   atk: { name:'攻擊', color:'#ff6b6b', nodes:[
     { id:'a1', name:'鋒利',   desc:'攻擊力',     max:5, stat:'dmgPct',     per:4 },
     { id:'a2', name:'迅捷',   desc:'攻擊速度',   max:5, stat:'atkSpdPct',  per:3 },
     { id:'a3', name:'致命',   desc:'暴擊率',     max:5, stat:'critPct',    per:2 },
     { id:'a4', name:'重擊',   desc:'暴擊傷害',   max:5, stat:'critDmgPct', per:10 },
-    { id:'a5', name:'箭雨',   desc:'+1 投射物',  max:1, stat:'projectiles',per:1 },
   ]},
   ele: { name:'元素', color:'#4dabff', nodes:[
-    { id:'e1', name:'貫穿',   desc:'穿透 +1',    max:2, stat:'pierce',     per:1 },
-    { id:'e2', name:'寒冰',   desc:'命中減速 8%（特效）', max:3, proc:'frost', per:8 },
-    { id:'e3', name:'引燃',   desc:'命中燃燒 6%（特效）', max:3, proc:'burn',  per:6 },
-    { id:'e4', name:'雷電',   desc:'連鎖閃電 10%（特效）',max:3, proc:'chain', per:10 },
+    { id:'e1', name:'寒冰',   desc:'命中減速（特效）', max:3, proc:'frost',    per:8 },
+    { id:'e2', name:'引燃',   desc:'命中燃燒（特效）', max:3, proc:'burn',     per:6 },
+    { id:'e3', name:'雷電',   desc:'連鎖閃電（特效）', max:3, proc:'chain',    per:10 },
+    { id:'e4', name:'爆裂',   desc:'暴擊爆炸（特效）', max:3, proc:'critboom', per:12 },
   ]},
   sur: { name:'生存', color:'#5fd98a', nodes:[
     { id:'s1', name:'強壯',   desc:'最大生命',   max:5, stat:'hp',        per:25 },
     { id:'s2', name:'護甲',   desc:'護甲',       max:5, stat:'armorFlat', per:4 },
-    { id:'s3', name:'吸取',   desc:'吸血 2%（特效）', max:3, proc:'lifesteal', per:2 },
+    { id:'s3', name:'吸取',   desc:'吸血（特效）', max:3, proc:'lifesteal', per:2 },
     { id:'s4', name:'恢復',   desc:'每秒回血（特效）', max:3, proc:'regen', per:1 },
     { id:'s5', name:'疾行',   desc:'移動速度',   max:4, stat:'movePct',   per:4 },
   ]},

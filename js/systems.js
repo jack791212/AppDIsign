@@ -64,7 +64,12 @@
     const base = pick(G.ITEM_BASES[slot]);
     const [amin, amax] = G.RARITY[rarity].affixes;
     const nAff = randInt(amin, amax);
-    const pool = affixPoolForSlot(slot).slice();
+    let pool = affixPoolForSlot(slot).slice();
+    // 非遠程武器不會出現投射物專屬詞條（多重箭、穿透）
+    if (slot === "weapon" && base.wtype) {
+      const wt = G.WEAPON_TYPES[base.wtype];
+      if (wt.cls !== "ranged") pool = pool.filter(a => a.id !== "multishot" && a.id !== "pierce");
+    }
     const affixes = [];
     for (let i = 0; i < nAff && pool.length; i++) {
       const a = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
@@ -81,7 +86,7 @@
       const la = G.LEGEND_AFFIXES[pick(keys)];
       affixes.push({ id: la.id, value: la.roll[0], proc: true, legend: true });
     }
-    return { uid: UID++, slot, baseName: base.n, ic: base.ic, rarity, ilvl, affixes };
+    return { uid: UID++, slot, baseName: base.n, ic: base.ic, wtype: base.wtype, rarity, ilvl, affixes };
   };
   G.affixText = function (af) {
     const def = af.legend ? G.LEGEND_AFFIXES[af.id] : G.AFFIXES[af.id];
@@ -154,14 +159,21 @@
       }
     }
 
+    // 武器類型：決定攻擊方式與倍率
+    const wpn = s.equipped.weapon;
+    const wt = (wpn && wpn.wtype && G.WEAPON_TYPES[wpn.wtype]) ? wpn.wtype : "bow";
+    const WT = G.WEAPON_TYPES[wt];
+    p.weaponType = wt;
+    p.weaponClass = WT.cls;
+    p.weapon = WT;
+
     // 結算有效數值
     maxHp = Math.round(maxHp + hpFlat);
     p.maxHp = maxHp;
-    p.dmg = dmg * (1 + dmgPct / 100);
-    p.fireInterval = 0.6 / (1 + atkSpdPct / 100);
-    p.fireInterval = Math.max(0.12, p.fireInterval);
+    p.dmg = dmg * WT.dmgMul * (1 + dmgPct / 100);
+    p.fireInterval = Math.max(0.1, 0.6 / WT.spdMul / (1 + atkSpdPct / 100));
     p.moveSpeed = 200 * (1 + movePct / 100);
-    p.crit = critPct;
+    p.crit = critPct + (WT.critAdd || 0);
     p.critDmg = critDmgPct;
     p.projectiles = Math.round(projectiles);
     p.pierce = Math.round(pierce);
@@ -169,6 +181,8 @@
     p.procs = procs;
     p.bulletSpeed = 560;
     if (p.hp === undefined || p.hp > p.maxHp) p.hp = p.maxHp;
+    // 切換成非召喚武器時清除既有召喚物
+    if (G.world && G.world.minions && WT.cls !== "summon") G.world.minions.length = 0;
   };
 
   // ================= 玩家 =================
@@ -201,13 +215,14 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], cam: { x: 0, y: 0 }, spawnTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
+    w.swings = []; w.minions = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
     G.save.area = areaId; G.persist();
     // 玩家出生點：優先放在「返回來源」的傳送門附近，否則地圖底部中央
