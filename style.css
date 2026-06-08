@@ -128,6 +128,17 @@ body.cine #hud, body.cine #sidebtns, body.cine #skillBtns, body.cine #portalProm
 .bSell { background: #3a2030; color: #ff9bb0; }
 .bClose { background: rgba(255,255,255,.1); color: #fff; }
 
+/* 功法 */
+#qiCols { display: flex; gap: 8px; }
+.qicol { flex: 1; min-width: 0; }
+.qihead { position: sticky; top: 0; z-index: 2; text-align: center; font-size: 15px; font-weight: 800; padding: 8px 2px; border-radius: 8px; margin-bottom: 8px; backdrop-filter: blur(2px); }
+.qinode { border: 2px solid #2e2a44; border-radius: 9px; padding: 6px 5px; margin-bottom: 7px; background: rgba(255,255,255,.03); }
+.qinode .qn { font-size: 12px; font-weight: 700; }
+.qinode .qd { font-size: 10px; color: #9b8fc0; margin-top: 2px; }
+.qinode.owned { border-color: #ffd166; background: rgba(255,209,102,.1); }
+.qinode.next { border-color: #7af5d0; background: rgba(122,245,208,.12); cursor: pointer; }
+.qinode.lock { opacity: .4; }
+
 /* talents */
 #talCols { display: flex; gap: 8px; }
 .talcol { flex: 1; }

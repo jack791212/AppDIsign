@@ -25,6 +25,8 @@
     $("xpbar").style.width = (s.xp / G.xpForLevel(s.level) * 100) + "%";
     const tp = $("talBadge");
     if (s.talentPts > 0) { tp.style.display = "flex"; tp.textContent = s.talentPts; } else tp.style.display = "none";
+    const qb = $("qiBadge"); const qa = G.qiAvail ? G.qiAvail() : 0;
+    if (qb) { if (qa > 0) { qb.style.display = "flex"; qb.textContent = qa; } else qb.style.display = "none"; }
     const sb = $("shopBtn"); if (sb) sb.style.display = "none"; // 商店改由城鎮 NPC 開啟
   };
 
@@ -215,6 +217,28 @@
   G.renderTalents = renderTalents;
   G.openTalents = function () { renderTalents(); $("talPanel").classList.add("show"); };
   G.closeTalents = function () { $("talPanel").classList.remove("show"); };
+
+  // ---------- 功法面板 ----------
+  function renderQi() {
+    $("qiPts").textContent = "可用功法點：" + G.qiAvail() + "（每 5 等 +1，目前共 " + G.qiTotal() + " 點）";
+    const cols = $("qiCols"); cols.innerHTML = "";
+    for (const cid in G.QIGONG) {
+      const col = G.QIGONG[cid], depth = G.save.qi[cid] || 0;
+      const c = document.createElement("div"); c.className = "qicol";
+      c.innerHTML = `<div class="qihead" style="background:${col.color}33;color:${col.color}">${col.ic} ${col.name}</div>`;
+      col.nodes.forEach((n, t) => {
+        const owned = t < depth, next = t === depth;
+        const el = document.createElement("div"); el.className = "qinode " + (owned ? "owned" : next ? "next" : "lock");
+        el.innerHTML = `<div class="qn">${t + 1}. ${n.name}</div><div class="qd">${n.desc}</div>`;
+        if (next) el.onclick = () => { if (G.qiAdvance(cid)) renderQi(); };
+        c.appendChild(el);
+      });
+      cols.appendChild(c);
+    }
+  }
+  G.renderQi = renderQi;
+  G.openQi = function () { renderQi(); $("qiPanel").classList.add("show"); };
+  G.closeQi = function () { $("qiPanel").classList.remove("show"); };
 
   // ---------- 對話 / 劇情系統 ----------
   let dlg = null;

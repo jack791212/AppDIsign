@@ -200,11 +200,12 @@
     const baseAng = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing;
     p.facing = baseAng;
     const reach = (WT.reach || 100) * (1 + (p.rangePct || 0) / 100);
-    if (p.weaponType === "dagger") {
-      // 匕首：窄而深的刺擊
+    if (p.whirlT > 0) {
+      // 旋風斬：全方位大範圍旋轉
+      w.swings.push({ type: "sword", ang: baseAng, arcHalf: Math.PI * 0.95, reach: reach * 1.3, width: 26, life: 0.32, maxLife: 0.32, hits: [], dir: Math.random() < 0.5 ? 1 : -1 });
+    } else if (p.weaponType === "dagger") {
       w.swings.push({ type: "dagger", ang: baseAng, reach, width: 12, life: 0.18, maxLife: 0.18, hits: [] });
     } else {
-      // 雙手劍：從身側揮砍至目標角度
       const arcHalf = (WT.arcHalf || 1.05);
       w.swings.push({ type: "sword", ang: baseAng, arcHalf, reach, width: 24, life: 0.26, maxLife: 0.26, hits: [], dir: Math.random() < 0.5 ? 1 : -1 });
     }
@@ -318,6 +319,7 @@
     aimBurst(e) { addEmitter(e, { dur: 0.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.14 && em.n < 4) { em.acc -= 0.14; em.n++; bossShot(en.x, en.y, angTo(en), 330, en.dmg, { r: 8 }); } } }); },
     wallRect(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 380, width: 66, dur: 1.0, dmg: e.dmg * 1.3 }); },
     sectorSlash(e) { addFreeCast({ shape: "sector", ox: e.x, oy: e.y, ang: angTo(e), radius: 160, arcHalf: Math.PI / 6, dur: 0.7, dmg: e.dmg * 1.2 }); },
+    bigBite(e) { addFreeCast({ shape: "sector", ox: e.x, oy: e.y, ang: angTo(e), radius: 250, arcHalf: Math.PI * 0.42, dur: 0.85, dmg: e.dmg * 1.5, big: true }); }, // 超大範圍扇形撕咬
     coneBurst(e) { const a = angTo(e); for (let i = -4; i <= 4; i++) bossShot(e.x, e.y, a + i * 0.1, 250, e.dmg, { r: 7, color: "#ff8aa0" }); },
     homingOrbs(e) { for (let i = 0; i < 3; i++) bossShot(e.x, e.y, angTo(e) + (i - 1) * 0.4, 175, e.dmg, { r: 8, color: "#ff9f40", homingT: 1.8, homTurn: 2.2, life: 2.4 }); },
     twinSpiral(e) { addEmitter(e, { dur: 1.4, ang: Math.random() * 6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.07) { em.acc -= 0.07; em.ang += 0.45; for (let k = 0; k < 2; k++) bossShot(en.x, en.y, em.ang + k * Math.PI, 235, en.dmg, { r: 6, color: "#ffd166" }); } } }); },
@@ -459,9 +461,16 @@
     // 面向最近敵人（指向工具持續跟隨）
     { const tg = nearestEnemy(p.x, p.y); if (tg) p.facing = Math.atan2(tg.y - p.y, tg.x - p.x); }
 
-    // 自動攻擊（持續，移動中也會攻擊，朝最近敵人）
+    // 旋風斬詞條：近戰每 8 秒進入旋風狀態 3 秒
+    if (p.whirlT > 0) p.whirlT -= dt;
+    if (p.procs.whirl > 0 && p.weaponClass === "melee") {
+      p.whirlCd = (p.whirlCd || 0) - dt;
+      if (p.whirlCd <= 0 && w.enemies.length) { p.whirlT = 3; p.whirlCd = 8; G.shake(4, .12); }
+    }
+
+    // 自動攻擊（持續，移動中也會攻擊，朝最近敵人；旋風時更快）
     p.cooldown -= dt;
-    if (w.enemies.length && p.cooldown <= 0) { playerAttack(); p.cooldown = p.fireInterval; }
+    if (w.enemies.length && p.cooldown <= 0) { playerAttack(); p.cooldown = p.whirlT > 0 ? Math.min(p.fireInterval, 0.18) : p.fireInterval; }
 
     // 法書：召喚史萊姆（上限內持續補充）
     if (p.weaponClass === "summon") {
@@ -549,6 +558,8 @@
       }
       const d = U.dist(e.x, e.y, p.x, p.y);
       const a = Math.atan2(p.y - e.y, p.x - e.x);
+      // 麻痺/定身：停頓，不行動也不造成接觸傷害
+      if (e.stunT > 0) { e.stunT -= dt; continue; }
       // 讀條 / 衝刺 覆寫一般行動
       if (e.cast) {
         updateCast(e, dt);
@@ -967,19 +978,23 @@
         const prog = U.clamp(e.ultT / e.ultDur, 0, 1);
         if (Math.sin(e.ultT * (6 + prog * 40)) > 0) bodyCol = "#ff2020";
       }
-      ctx.fillStyle = bodyCol;
-      ctx.beginPath(); ctx.arc(x, y, e.r, 0, Math.PI * 2); ctx.fill();
+      // 身體底色光暈（受擊/蓄力時更明顯）
+      ctx.globalAlpha = e.hitFlash > 0 ? .6 : .3; ctx.fillStyle = bodyCol;
+      ctx.beginPath(); ctx.arc(x, y, e.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
       if (e.boss && e.ultState === "windup") {
         const prog = U.clamp(e.ultT / e.ultDur, 0, 1);
         ctx.globalAlpha = 0.4 + 0.4 * Math.abs(Math.sin(e.ultT * (6 + prog * 40)));
         ctx.strokeStyle = "#ff3030"; ctx.lineWidth = 3 + prog * 4;
         ctx.beginPath(); ctx.arc(x, y, e.r + 6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
       }
-      ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 2; ctx.stroke();
-      if (e.slowT > 0) { ctx.strokeStyle = "#7fdfff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, e.r + 3, 0, Math.PI * 2); ctx.stroke(); }
-      if (e.burnT > 0) { ctx.fillStyle = "rgba(255,120,40,.5)"; ctx.beginPath(); ctx.arc(x, y - e.r, 3, 0, Math.PI * 2); ctx.fill(); }
-      ctx.fillStyle = "#fff";
-      ctx.beginPath(); ctx.arc(x - e.r * .3, y - e.r * .2, e.r * .16, 0, Math.PI * 2); ctx.arc(x + e.r * .3, y - e.r * .2, e.r * .16, 0, Math.PI * 2); ctx.fill();
+      // 狀態外框
+      if (e.stunT > 0) { ctx.strokeStyle = "#ffe14d"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, e.r + 3, 0, Math.PI * 2); ctx.stroke(); }
+      else if (e.slowT > 0) { ctx.strokeStyle = "#7fdfff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, e.r + 3, 0, Math.PI * 2); ctx.stroke(); }
+      if (e.burnT > 0) { ctx.fillStyle = "rgba(255,120,40,.6)"; ctx.beginPath(); ctx.arc(x + e.r * .5, y - e.r * .6, 3, 0, Math.PI * 2); ctx.fill(); }
+      // 外觀圖示
+      ctx.font = Math.round(e.r * 1.9) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(e.ic || "🟣", x, y);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
       if (e.hp < e.maxHp && !e.boss) {
         const bw = e.r * 2; ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(x - bw / 2, y - e.r - 8, bw, 4);
         ctx.fillStyle = "#7af5d0"; ctx.fillRect(x - bw / 2, y - e.r - 8, bw * (e.hp / e.maxHp), 4);
@@ -1286,6 +1301,8 @@
     }
     bindTap("bagBtn", G.openBag);
     bindTap("talBtn", G.openTalents);
+    bindTap("qiBtn", G.openQi);
+    document.getElementById("qiClose").onclick = G.closeQi;
     bindTap("shopBtn", G.openShop);
     bindTap("recallBtn", startRecall);
     bindTap("dashBtn", triggerDash);

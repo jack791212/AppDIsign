@@ -20,6 +20,7 @@
     return {
       v: 1, level: 1, xp: 0, gold: 0, talentPts: 0,
       talents: {}, // nodeId -> rank
+      qi: { fire: 0, lightning: 0, ice: 0 }, // 功法各條深度
       equipped: { weapon: null, armor: null, helmet: null, ring: null },
       bag: [], area: "town",
       killedBoss: {},
@@ -28,7 +29,7 @@
   G.loadSave = function () {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (raw) { G.save = JSON.parse(raw); return true; }
+      if (raw) { G.save = JSON.parse(raw); if (!G.save.qi) G.save.qi = { fire: 0, lightning: 0, ice: 0 }; return true; }
     } catch (e) {}
     G.save = G.newSave();
     return false;
@@ -174,7 +175,7 @@
     let dmg = 10 + (lv - 1) * 2.2;
     let atkSpdPct = 0, dmgPct = 0, critPct = 5, critDmgPct = 50, movePct = 0;
     let projectiles = 1, pierce = 0, armorFlat = 0, hpFlat = 0, minionPct = 0, rangePct = 0, pickRange = 0;
-    const procs = { chain: 0, critboom: 0, lifesteal: 0, frost: 0, burn: 0, thorns: 0, regen: 0, storm: 0, killHeal: 0 };
+    const procs = { chain: 0, critboom: 0, lifesteal: 0, frost: 0, burn: 0, thorns: 0, regen: 0, storm: 0, killHeal: 0, paraOnHit: 0, freezeChance: 0, whirl: 0, explosive: 0 };
 
     function addStat(stat, v) {
       switch (stat) {
@@ -223,6 +224,16 @@
         else if (node.proc) procs[node.proc] = (procs[node.proc] || 0) + total;
       }
     }
+    // 功法（火/雷/冰）：依各條深度累加節點
+    const qi = s.qi || { fire: 0, lightning: 0, ice: 0 };
+    for (const col in G.QIGONG) {
+      const depth = qi[col] || 0, nodes = G.QIGONG[col].nodes;
+      for (let t = 0; t < depth && t < nodes.length; t++) {
+        const n = nodes[t];
+        if (n.stat) addStat(n.stat, n.per);
+        else if (n.proc) procs[n.proc] = (procs[n.proc] || 0) + n.per;
+      }
+    }
     // Boss 首殺戰利品：永久加成（長期目標）
     const trophies = Object.values(s.killedBoss || {}).filter(Boolean).length;
     if (trophies) { dmgPct += trophies * 3; hpFlat += trophies * 20; }
@@ -258,7 +269,7 @@
 
   // ================= 玩家 =================
   G.player = { x: 0, y: 0, r: 16, hp: 100, invuln: 0, cooldown: 0, stormCd: 0, regenAcc: 0, facing: 0, moving: false,
-    burnT: 0, burnDps: 0, burnAcc: 0, chillT: 0, chillPct: 0, paraT: 0, paraTick: 0, stunT: 0, dashT: 0, dashVx: 0, dashVy: 0 };
+    burnT: 0, burnDps: 0, burnAcc: 0, chillT: 0, chillPct: 0, paraT: 0, paraTick: 0, stunT: 0, dashT: 0, dashVx: 0, dashVy: 0, whirlT: 0, whirlCd: 0 };
 
   G.healPlayer = function (amt) {
     const p = G.player;
@@ -320,6 +331,7 @@
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
+    if (!G.AREAS[areaId]) areaId = "town"; // 舊存檔可能指向已移除的區域
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
@@ -389,13 +401,13 @@
     const t = G.ENEMIES[typeId]; if (!t) return;
     const lvScale = 1 + area.level * 0.18;
     w.enemies.push({
-      typeId, name: t.name, x, y, r: t.r, color: t.color, lvl: area.level,
+      typeId, name: t.name, ic: t.ic, x, y, r: t.r, color: t.color, lvl: area.level,
       elem: typeId === "bomber" ? "fire" : (area.elem || null),
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
-      slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: false,
+      slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: false,
       cast: null, castCd: rand(0.6, 1.6), dashT: 0, dvx: 0, dvy: 0,
     });
   };
@@ -408,10 +420,10 @@
     const lvScale = 1 + area.level * 0.1;
     const bx = (px != null) ? px : area.bossAt.x, by = (py != null) ? py : area.bossAt.y;
     const b = {
-      typeId: area.boss, name: t.name, x: bx, y: by, r: t.r, color: t.color, lvl: area.level, elem: area.elem || null,
+      typeId: area.boss, name: t.name, ic: t.ic, x: bx, y: by, r: t.r, color: t.color, lvl: area.level, elem: area.elem || null,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: t.dmg, speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
-      behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: true,
+      behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: true,
       cast: null, castCd: 0, dashT: 0, dvx: 0, dvy: 0,
       attacks: t.attacks || ["aimVolley"], ults: t.ults || ["novaRing"],
       emitters: [], ultState: "move", ultT: 0, ultDur: 0, ultActiveT: 0, ultMin: 1.2,
@@ -472,16 +484,35 @@
         G.dealDamage(best, p.dmg * 0.6, false);
       }
     }
+    // 麻痺（雷）/ 定身（冰）：使敵人停頓
+    if (e.hp > 0 && procs.paraOnHit > 0 && Math.random() * 100 < procs.paraOnHit) e.stunT = Math.max(e.stunT || 0, 0.8);
+    if (e.hp > 0 && procs.freezeChance > 0 && Math.random() * 100 < procs.freezeChance) e.stunT = Math.max(e.stunT || 0, 1.3);
     // 暴擊爆炸
     if (isCrit && procs.critboom > 0) {
       G.burst(e.x, e.y, "#ffb14d", 12);
       const R = 90;
-      for (const o of w.enemies) {
-        if (o === e || o.hp <= 0) continue;
-        if (dist(o.x, o.y, e.x, e.y) < R) G.dealDamage(o, p.dmg * procs.critboom / 100, false);
-      }
+      for (const o of w.enemies) { if (o === e || o.hp <= 0) continue; if (dist(o.x, o.y, e.x, e.y) < R) G.dealDamage(o, p.dmg * procs.critboom / 100, false); }
       G.shake(6, .2);
     }
+    // 爆裂彈（命中範圍爆炸，遠程 build）
+    if (procs.explosive > 0) {
+      G.burst(e.x, e.y, "#ffd166", 10);
+      const R = 80;
+      for (const o of w.enemies) { if (o === e || o.hp <= 0) continue; if (dist(o.x, o.y, e.x, e.y) < R) G.dealDamage(o, p.dmg * procs.explosive / 100, false); }
+    }
+  };
+
+  // ===== 功法點數 =====
+  G.qiTotal = function () { return Math.floor(G.save.level / 5); };
+  G.qiSpent = function () { const q = G.save.qi || {}; return (q.fire || 0) + (q.lightning || 0) + (q.ice || 0); };
+  G.qiAvail = function () { return G.qiTotal() - G.qiSpent(); };
+  G.qiAdvance = function (col) {
+    if (!G.QIGONG[col]) return false;
+    if (G.qiAvail() <= 0) { G.toast("沒有可用功法點（每 5 等 +1）"); return false; }
+    if ((G.save.qi[col] || 0) >= G.QIGONG[col].nodes.length) { G.toast("此功法已圓滿"); return false; }
+    G.save.qi[col] = (G.save.qi[col] || 0) + 1;
+    G.computeStats(); G.persist(); if (G.refreshHud) G.refreshHud();
+    return true;
   };
 
   // 套用元素狀態到玩家（火=燃燒、冰=減速、雷=麻痺）
