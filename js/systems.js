@@ -119,6 +119,40 @@
     G.toast("強化成功！" + item.baseName + " +" + item.plus);
     return true;
   };
+  G.sellAll = function () {
+    let n = 0, gold = 0;
+    for (const it of G.save.bag) { gold += G.RARITY[it.rarity].sell; n++; }
+    if (!n) { G.toast("背包是空的"); return; }
+    G.save.bag = []; G.save.gold += gold;
+    G.toast("賣出全部 " + n + " 件，+🪙" + gold);
+    G.persist(); if (G.refreshHud) G.refreshHud(); if (G.renderBag) G.renderBag();
+  };
+  // 強化成功率：+5 以上開始可能失敗，越高越低
+  G.enhanceRate = function (plus) {
+    const table = [1, 1, 1, 1, 1, 0.85, 0.7, 0.55, 0.4, 0.28, 0.18, 0.12];
+    return plus < table.length ? table[plus] : 0.08;
+  };
+  // 失敗後果：+8 以上爆炸（消失），其餘降一級
+  G.enhanceFail = function (plus) { return plus >= 8 ? "explode" : "down"; };
+  // 嘗試強化已選裝備，回傳 {result, cost}
+  G.tryEnhance = function (item) {
+    const cur = item.plus || 0;
+    if (cur >= G.MAX_PLUS) { G.toast("已達上限"); return { result: "max" }; }
+    const cost = G.enhanceCost(item);
+    if (G.save.gold < cost) { G.toast("金幣不足（需 " + cost + "）"); return { result: "poor" }; }
+    G.save.gold -= cost;
+    const ok = Math.random() < G.enhanceRate(cur);
+    let result;
+    if (ok) { item.plus = cur + 1; result = "success"; if (G.sfx) G.sfx("level"); }
+    else if (G.enhanceFail(cur) === "explode") {
+      // 從背包或裝備欄移除
+      const bi = G.save.bag.indexOf(item); if (bi >= 0) G.save.bag.splice(bi, 1);
+      for (const sl of G.SLOTS) if (G.save.equipped[sl] === item) G.save.equipped[sl] = null;
+      result = "explode"; if (G.sfx) G.sfx("boom");
+    } else { item.plus = Math.max(0, cur - 1); result = "down"; if (G.sfx) G.sfx("hurt"); }
+    G.computeStats(); G.persist(); if (G.refreshHud) G.refreshHud();
+    return { result, cost };
+  };
   G.gambleCost = function () { return 60 + G.save.level * 15; };
   G.gamble = function (slot) {
     const c = G.gambleCost();
@@ -223,7 +257,8 @@
   };
 
   // ================= 玩家 =================
-  G.player = { x: 0, y: 0, r: 16, hp: 100, invuln: 0, cooldown: 0, stormCd: 0, regenAcc: 0, facing: 0, moving: false };
+  G.player = { x: 0, y: 0, r: 16, hp: 100, invuln: 0, cooldown: 0, stormCd: 0, regenAcc: 0, facing: 0, moving: false,
+    burnT: 0, burnDps: 0, burnAcc: 0, chillT: 0, chillPct: 0, paraT: 0, paraTick: 0, stunT: 0, dashT: 0, dashVx: 0, dashVy: 0 };
 
   G.healPlayer = function (amt) {
     const p = G.player;
@@ -345,6 +380,7 @@
     const lvScale = 1 + area.level * 0.18;
     w.enemies.push({
       typeId, name: t.name, x, y, r: t.r, color: t.color, lvl: area.level,
+      elem: typeId === "bomber" ? "fire" : (area.elem || null),
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
@@ -362,7 +398,7 @@
     const lvScale = 1 + area.level * 0.1;
     const bx = (px != null) ? px : area.bossAt.x, by = (py != null) ? py : area.bossAt.y;
     const b = {
-      typeId: area.boss, name: t.name, x: bx, y: by, r: t.r, color: t.color, lvl: area.level,
+      typeId: area.boss, name: t.name, x: bx, y: by, r: t.r, color: t.color, lvl: area.level, elem: area.elem || null,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: t.dmg, speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
       behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: true,
@@ -438,8 +474,16 @@
     }
   };
 
-  // 玩家受傷（含護甲減傷與荊棘反傷）
-  G.damagePlayer = function (raw, source) {
+  // 套用元素狀態到玩家（火=燃燒、冰=減速、雷=麻痺）
+  G.applyPlayerStatus = function (elem) {
+    const p = G.player;
+    if (elem === "fire") { p.burnT = 3; p.burnDps = Math.max(2, p.maxHp * 0.015); }
+    else if (elem === "frost") { p.chillT = 2.2; p.chillPct = 45; }
+    else if (elem === "lightning") { p.paraT = 1.6; }
+  };
+
+  // 玩家受傷（含護甲減傷、荊棘反傷、元素狀態）
+  G.damagePlayer = function (raw, source, elem) {
     const p = G.player;
     if (p.invuln > 0 || p.hp <= 0) return;
     const reduction = p.armor / (p.armor + 30);
@@ -447,6 +491,7 @@
     p.hp -= dmg; p.invuln = 0.5;
     G.shake(7, .25);
     if (G.sfx) G.sfx("hurt");
+    if (elem) G.applyPlayerStatus(elem);
     // 荊棘反傷
     if (p.procs.thorns > 0 && source && source.hp > 0) {
       G.dealDamage(source, raw * p.procs.thorns / 100, false);

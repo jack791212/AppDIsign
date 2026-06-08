@@ -61,6 +61,7 @@
     <button class="sellbtn" data-r="0">賣普通</button>
     <button class="sellbtn" data-r="1">賣 ≤魔法</button>
     <button class="sellbtn" data-r="2">賣 ≤稀有</button>
+    <button class="sellbtn" data-r="all" style="color:#ff9bb0;border-color:#ff6b8a">賣全部</button>
   </div>
   <div class="scroll"><div id="bagGrid"></div></div>
 </div>
@@ -75,25 +76,32 @@
   <div class="scroll"><div id="talCols"></div></div>
 </div>
 
-<!-- 城鎮商店 -->
+<!-- 城鎮商店（鐵匠：強化 / 賭裝，依進入模式顯示） -->
 <div class="panel" id="shopPanel">
   <div class="head">
-    <h2>🏪 城鎮商店</h2>
+    <h2 id="shopTitle">🔨 鐵匠</h2>
     <button class="closebtn" id="shopClose">✕</button>
   </div>
   <div style="text-align:right;font-weight:700;margin-bottom:8px" id="shopGold">🪙 0</div>
-  <div class="scroll">
-    <h3 style="font-size:15px;color:#ffd166;margin:6px 0">🎲 賭裝（隨機部位裝備）</h3>
-    <div style="font-size:12px;color:#9b8fc0;margin-bottom:8px" id="gambleHint">每次花費 — 金幣，隨機詞條，越高等越好</div>
-    <div id="gambleRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px"></div>
-    <h3 style="font-size:15px;color:#7af5d0;margin:6px 0">⚒️ 強化（提升已裝備數值）</h3>
-    <div style="font-size:12px;color:#9b8fc0;margin-bottom:8px">每強化一級，該裝備所有數值 +8%（上限 +12）</div>
-    <div id="enhanceList"></div>
-  </div>
+  <div class="scroll"><div id="shopBody"></div></div>
 </div>
 
 <!-- 道具彈窗 -->
 <div id="itemPop"><div class="itemcard" id="itemCard"></div></div>
+
+<!-- 強化確認彈窗 -->
+<div id="enhPop"><div class="itemcard" id="enhCard"></div></div>
+
+<!-- 對話 / 劇情 -->
+<div class="panel" id="dlgPanel">
+  <div style="flex:1" id="dlgSpacer"></div>
+  <div id="dlgBox">
+    <div id="dlgHead"><span id="dlgIc">🧑</span><span id="dlgName"></span></div>
+    <div id="dlgText"></div>
+    <div id="dlgHint">▼ 點擊繼續</div>
+    <div id="dlgOptions"></div>
+  </div>
+</div>
 
 <!-- 開始畫面 -->
 <div class="overlay show" id="startScreen">

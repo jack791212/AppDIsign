@@ -212,7 +212,7 @@
     if (!c.fired && c.t >= c.dur) {
       c.fired = true;
       e.lastCastAng = c.ang;
-      if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e);
+      if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e, e.elem);
       const cb = c.onFire; e.cast = null; e.castCd = c.cd || 1.6;
       if (cb) cb(e);
     }
@@ -306,15 +306,15 @@
       e.ultMin = 2.8; const n = 4 + e.tier;
       for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; bossShot(e.x, e.y, a, 150, e.dmg, { r: 9, color: "#ff9f40", homingT: 2.0, homTurn: 2.2, life: 2.0, bloom: true, bloomR: 85, bloomDmg: e.dmg * 1.4 }); }
     },
-    fieldSweepH(e) { // 全場橫向矩形逐排掃描，需走位到已觸發排
-      const rows = 6 + e.tier, area = G.world.area, top = U.clamp(G.player.y - 380, 120, area.h - 120 - rows * 130);
-      e.ultMin = rows * 0.42 + 0.6;
-      addEmitter(e, { dur: rows * 0.42 + 0.2, gap: 0.42, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < rows) { em.acc -= em.gap; const oy = top + em.n * 130; em.n++; addFreeCast({ shape: "rect", centered: true, ox: area.w / 2, oy, ang: 0, length: area.w, width: 120, dur: 0.7, dmg: en.dmg * 1.2 }); } } });
+    fieldSweepH(e) { // 全場橫向矩形逐排掃描，需走位到已觸發排（間隔加大方便閃避）
+      const rows = 5 + e.tier, area = G.world.area, gap = 0.95, top = U.clamp(G.player.y - 320, 120, area.h - 120 - rows * 150);
+      e.ultMin = rows * gap + 0.7;
+      addEmitter(e, { dur: rows * gap + 0.3, gap, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < rows) { em.acc -= em.gap; const oy = top + em.n * 150; em.n++; addFreeCast({ shape: "rect", centered: true, ox: area.w / 2, oy, ang: 0, length: area.w, width: 120, dur: 0.65, dmg: en.dmg * 1.2 }); } } });
     },
     fieldSweepV(e) { // 全場縱向矩形逐列掃描
-      const cols = 6 + e.tier, area = G.world.area, left = U.clamp(G.player.x - 380, 120, area.w - 120 - cols * 130);
-      e.ultMin = cols * 0.42 + 0.6;
-      addEmitter(e, { dur: cols * 0.42 + 0.2, gap: 0.42, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < cols) { em.acc -= em.gap; const ox = left + em.n * 130; em.n++; addFreeCast({ shape: "rect", centered: true, ox, oy: area.h / 2, ang: Math.PI / 2, length: area.h, width: 120, dur: 0.7, dmg: en.dmg * 1.2 }); } } });
+      const cols = 5 + e.tier, area = G.world.area, gap = 0.95, left = U.clamp(G.player.x - 320, 120, area.w - 120 - cols * 150);
+      e.ultMin = cols * gap + 0.7;
+      addEmitter(e, { dur: cols * gap + 0.3, gap, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < cols) { em.acc -= em.gap; const ox = left + em.n * 150; em.n++; addFreeCast({ shape: "rect", centered: true, ox, oy: area.h / 2, ang: Math.PI / 2, length: area.h, width: 120, dur: 0.65, dmg: en.dmg * 1.2 }); } } });
     },
     megaCharge(e) { // 大範圍光波橫掃，更寬更長
       const reps = 2 + e.tier; e.ultMin = reps * 0.7 + 0.5;
@@ -358,6 +358,7 @@
   // ---------- 更新 ----------
   function update(dt) {
     const w = G.world, p = G.player, area = w.area;
+    const areaElem = area.elem || null;
     w.time += dt;
 
     // 技能冷卻
@@ -365,7 +366,15 @@
     if (ultCd > 0) ultCd -= dt;
     updateSkillUI();
 
-    // 玩家移動（衝刺優先；否則依控制模式：鍵盤 WASD 或觸控搖桿）
+    // 玩家狀態：燃燒(火)、減速(冰)、麻痺(雷=移動會頓一下)
+    if (p.burnT > 0) { p.burnT -= dt; p.burnAcc += p.burnDps * dt; if (p.burnAcc >= 1) { const d = Math.floor(p.burnAcc); p.burnAcc -= d; p.hp -= d; if (p.hp <= 0) { p.hp = 0; G.onPlayerDeath(); } } }
+    if (p.chillT > 0) p.chillT -= dt; else p.chillPct = 0;
+    if (p.paraT > 0) { p.paraT -= dt; p.paraTick -= dt; if (p.paraTick <= 0) { p.paraTick = U.rand(0.18, 0.4); p.stunT = 0.12; } }
+    if (p.stunT > 0) p.stunT -= dt;
+    const chillMul = p.chillT > 0 ? (1 - p.chillPct / 100) : 1;
+    const stunned = p.stunT > 0;
+
+    // 玩家移動（衝刺優先；麻痺頓挫時不能動；冰霜減速）
     if (p.dashT > 0) {
       p.dashT -= dt;
       p.x = U.clamp(p.x + p.dashVx * dt, p.r, area.w - p.r);
@@ -378,11 +387,11 @@
       } else if (joy.active) {
         mvx = joy.dx; mvy = joy.dy; mag = joy.mag;
       }
-      p.moving = mag > 0.08;
+      p.moving = mag > 0.08 && !stunned;
       if (p.moving) {
-        const a = Math.atan2(mvy, mvx);
-        p.x += Math.cos(a) * p.moveSpeed * mag * dt;
-        p.y += Math.sin(a) * p.moveSpeed * mag * dt;
+        const a = Math.atan2(mvy, mvx), sp = p.moveSpeed * chillMul;
+        p.x += Math.cos(a) * sp * mag * dt;
+        p.y += Math.sin(a) * sp * mag * dt;
         p.x = U.clamp(p.x, p.r, area.w - p.r);
         p.y = U.clamp(p.y, p.r, area.h - p.r);
       }
@@ -537,7 +546,7 @@
       e.x = U.clamp(e.x, e.r, area.w - e.r); e.y = U.clamp(e.y, e.r, area.h - e.r);
       // 接觸傷害（空中的 Boss 不造成接觸傷害）
       e.touchCd -= dt;
-      if (!e.airborne && d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e); e.touchCd = 0.6; }
+      if (!e.airborne && d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e, e.elem); e.touchCd = 0.6; }
     }
 
     // 召喚物（史萊姆）：追蹤並攻擊最近敵人
@@ -567,7 +576,7 @@
       s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
       const out = s.x < -30 || s.x > area.w + 30 || s.y < -30 || s.y > area.h + 30;
       if (s.life <= 0 || out) { if (s.bloom && !out) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); continue; }
-      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null); if (s.bloom) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); }
+      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null, areaElem); if (s.bloom) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); }
     }
 
     // 移動光波（實體碰撞傷害：碰到才受傷）
@@ -576,7 +585,7 @@
       if (!v.hit) {
         const dx = p.x - v.ox, dy = p.y - v.oy;
         const lx = dx * Math.cos(v.ang) + dy * Math.sin(v.ang), ly = -dx * Math.sin(v.ang) + dy * Math.cos(v.ang);
-        if (Math.abs(lx - v.traveled) < v.thickness / 2 + p.r && Math.abs(ly) < v.width / 2 + p.r) { G.damagePlayer(v.dmg, null); v.hit = true; }
+        if (Math.abs(lx - v.traveled) < v.thickness / 2 + p.r && Math.abs(ly) < v.width / 2 + p.r) { G.damagePlayer(v.dmg, null, areaElem); v.hit = true; }
       }
       if (v.traveled > v.maxLen) w.waves.splice(i, 1);
     }
@@ -594,8 +603,13 @@
       if (!c.fired && c.t >= c.dur) {
         c.fired = true;
         if (c.mode === "wave") { w.waves.push({ ox: c.ox, oy: c.oy, ang: c.ang || 0, width: c.width || 60, thickness: 36, speed: 560, traveled: 0, maxLen: c.length || 400, dmg: c.dmg, color: "#ffcf66", hit: false }); }
-        else if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null);
-        G.burst(c.ox, c.oy, "#ff6644", 12); G.shake(c.big ? 7 : 3, c.big ? .25 : .1);
+        else if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null, areaElem);
+        // AOE 命中特效（圓/扇/矩形皆有）
+        const col = areaElem === "fire" ? "#ff7a3a" : areaElem === "frost" ? "#7fd0ff" : areaElem === "lightning" ? "#cfa0ff" : "#ff6644";
+        if (c.shape === "circle") { w.particles.push({ ring: true, x: c.ox, y: c.oy, r1: c.radius, life: 0.35, maxLife: 0.35, color: col, lw: 5 }); G.burst(c.ox, c.oy, col, 16); }
+        else if (c.shape === "sector") { w.particles.push({ ring: true, x: c.ox, y: c.oy, r1: c.radius, life: 0.3, maxLife: 0.3, color: col, lw: 4 }); G.burst(c.ox, c.oy, col, 12); }
+        else { const mx = c.ox + Math.cos(c.ang) * (c.centered ? 0 : c.length * 0.5), my = c.oy + Math.sin(c.ang) * (c.centered ? 0 : c.length * 0.5); G.burst(c.ox, c.oy, col, 10); G.burst(mx, my, col, 12); }
+        G.shake(c.big ? 7 : 3, c.big ? .25 : .1);
         if (c.onFire) c.onFire(c);
       }
       if (c.t >= c.dur + 0.12) w.casts.splice(i, 1);
@@ -610,7 +624,7 @@
     // 粒子
     for (let i = w.particles.length - 1; i >= 0; i--) {
       const pt = w.particles[i]; pt.life -= dt;
-      if (!pt.line) { pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vx *= .92; pt.vy *= .92; }
+      if (!pt.line && !pt.ring) { pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vx *= .92; pt.vy *= .92; }
       if (pt.life <= 0) w.particles.splice(i, 1);
     }
     // 浮動數字
@@ -759,7 +773,7 @@
         ctx.fillStyle = "#7c4dff"; ctx.fillRect(bx, by, bw, bh);
         ctx.strokeStyle = "#b89cff"; ctx.lineWidth = 2; ctx.strokeRect(bx, by, bw, bh);
         ctx.fillStyle = "#fff"; ctx.font = "700 14px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("⚒️ 強化裝備", x, by + bh / 2);
+        ctx.fillText("💬 交談", x, by + bh / 2);
         ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
         npcBtnRect = { x: bx, y: by, w: bw, h: bh };
       }
@@ -943,16 +957,38 @@
     const px = p.x - cx, py = p.y - cy;
     ctx.save(); ctx.translate(px, py);
     ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(0, p.r * .75, p.r * .9, p.r * .4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = (p.invuln > 0 && Math.floor(p.invuln * 20) % 2) ? "#fff" : "#39d98a";
+    // 身體（依狀態染色）
+    let body = "#39d98a";
+    if (p.invuln > 0 && Math.floor(p.invuln * 20) % 2) body = "#fff";
+    else if (p.stunT > 0) body = "#ffe14d";
+    else if (p.chillT > 0) body = "#7fd0ff";
+    else if (p.burnT > 0) body = "#ff8a5a";
+    ctx.fillStyle = body;
     ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = "#1d7a52"; ctx.lineWidth = 3; ctx.stroke();
-    ctx.rotate(p.facing); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(p.r + 2, 0, 8, -Math.PI / 2.2, Math.PI / 2.2); ctx.stroke();
+    // 狀態外框
+    if (p.chillT > 0) { ctx.strokeStyle = "#bfeaff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, p.r + 3, 0, Math.PI * 2); ctx.stroke(); }
+    if (p.burnT > 0) { ctx.fillStyle = "rgba(255,120,40,.8)"; for (let k = 0; k < 3; k++) { const a = U.rand(0, 6.28); ctx.beginPath(); ctx.arc(Math.cos(a) * p.r * .6, -p.r * .6 + Math.sin(a) * 2, 2, 0, Math.PI * 2); ctx.fill(); } }
+    if (p.paraT > 0) { ctx.strokeStyle = "#ffe14d"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-p.r, -p.r - 4); ctx.lineTo(-2, -p.r + 2); ctx.lineTo(2, -p.r - 6); ctx.lineTo(p.r, -p.r); ctx.stroke(); }
+    // 裝備的武器（顯示在身側，朝向取代攻擊面向）
+    ctx.rotate(p.facing);
+    const wt = p.weaponType;
+    if (wt === "sword") { ctx.fillStyle = "#9a7b45"; ctx.fillRect(p.r - 3, -3.5, 6, 7); ctx.fillStyle = "#cfd8e3"; ctx.beginPath(); ctx.moveTo(p.r + 3, -3); ctx.lineTo(p.r + 24, -2); ctx.lineTo(p.r + 28, 0); ctx.lineTo(p.r + 24, 2); ctx.lineTo(p.r + 3, 3); ctx.closePath(); ctx.fill(); }
+    else if (wt === "dagger") { ctx.fillStyle = "#9a7b45"; ctx.fillRect(p.r - 2, -2.5, 4, 5); ctx.fillStyle = "#dfe7ef"; ctx.beginPath(); ctx.moveTo(p.r + 2, -1.8); ctx.lineTo(p.r + 12, -1.4); ctx.lineTo(p.r + 15, 0); ctx.lineTo(p.r + 12, 1.4); ctx.lineTo(p.r + 2, 1.8); ctx.closePath(); ctx.fill(); }
+    else if (wt === "staff") { ctx.strokeStyle = "#9a7b45"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(p.r - 2, 0); ctx.lineTo(p.r + 16, 0); ctx.stroke(); ctx.fillStyle = "#7fd0ff"; ctx.beginPath(); ctx.arc(p.r + 18, 0, 4.5, 0, Math.PI * 2); ctx.fill(); }
+    else if (wt === "book") { ctx.fillStyle = "#b06bff"; ctx.fillRect(p.r + 1, -6, 10, 12); ctx.fillStyle = "#fff"; ctx.fillRect(p.r + 5.5, -6, 1.6, 12); }
+    else { ctx.strokeStyle = "#caa15a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.r + 5, 0, 10, -1.4, 1.4); ctx.stroke(); ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.r + 5 + Math.cos(-1.4) * 10, Math.sin(-1.4) * 10); ctx.lineTo(p.r + 5 + Math.cos(1.4) * 10, Math.sin(1.4) * 10); ctx.stroke(); }
     ctx.restore();
 
-    // 圓形粒子
+    // 圓形粒子 / 擴散環（AOE 特效）
     for (const pt of w.particles) {
       if (pt.line) continue;
+      if (pt.ring) {
+        const k = 1 - pt.life / pt.maxLife;
+        ctx.globalAlpha = U.clamp(pt.life / pt.maxLife, 0, 1); ctx.strokeStyle = pt.color; ctx.lineWidth = pt.lw || 4;
+        ctx.beginPath(); ctx.arc(pt.x - cx, pt.y - cy, pt.r1 * k, 0, Math.PI * 2); ctx.stroke();
+        continue;
+      }
       ctx.globalAlpha = U.clamp(pt.life * 2, 0, 1); ctx.fillStyle = pt.color;
       ctx.beginPath(); ctx.arc(pt.x - cx, pt.y - cy, pt.r, 0, Math.PI * 2); ctx.fill();
     }

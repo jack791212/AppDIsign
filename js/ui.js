@@ -136,59 +136,52 @@
   G.openBag = function () {
     renderBag();
     document.querySelectorAll("#bagSellRow .sellbtn").forEach((b) => {
-      b.onclick = () => { if (confirm("確定賣出符合條件的裝備？")) G.sellByRarity(+b.dataset.r); };
+      b.onclick = () => {
+        const r = b.dataset.r;
+        if (r === "all") { if (confirm("確定賣出背包『全部』裝備？")) G.sellAll(); }
+        else { if (confirm("確定賣出符合條件的裝備？")) G.sellByRarity(+r); }
+      };
     });
     $("bagPanel").classList.add("show");
   };
   G.closeBag = function () { $("bagPanel").classList.remove("show"); };
 
-  // ---------- 道具彈窗 ----------
-  G.openItem = function (item, equipped) {
+  // ---------- 道具彈窗（雙欄比較：左=選擇，右=裝備中）----------
+  function affixHtml(item) {
+    let s = "";
+    for (const af of item.affixes) { const info = G.affixText(af); s += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`; }
+    if (!item.affixes.length) s = `<div class="aff" style="color:#8a839e">（無特殊詞條）</div>`;
+    return s;
+  }
+  function colHtml(item, title, isEquipped) {
+    if (!item) return `<div class="cmpCol"><div class="ctitle">${title}</div><div class="ename" style="color:#6b6480">（無）</div></div>`;
     const r = G.RARITY[item.rarity];
-    const card = $("itemCard");
-    let aff = "";
-    for (const af of item.affixes) {
-      const info = G.affixText(af);
-      aff += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`;
-    }
-    if (item.affixes.length === 0) aff = `<div class="aff" style="color:#8a839e">（無特殊詞條）</div>`;
-    // 與目前裝備比較（自動顯示當前裝備詞條）
-    let cmp = "";
-    if (!equipped) {
+    const wt = (item.slot === "weapon" && item.wtype && G.WEAPON_TYPES[item.wtype]) ? G.WEAPON_TYPES[item.wtype] : null;
+    return `<div class="cmpCol${isEquipped ? " equipped" : ""}"><div class="ctitle">${title}</div>` +
+      `<div class="ename t-${r.cls}">${item.ic} ${item.baseName}${item.plus ? " +" + item.plus : ""}${isEquipped ? '<span class="eqtag">裝備中</span>' : ""}</div>` +
+      `<div class="ctitle" style="margin:2px 0 6px">${r.name}${wt ? " · " + wt.name : ""} · iLv ${item.ilvl}</div>` +
+      affixHtml(item) + "</div>";
+  }
+  G.openItem = function (item, equipped) {
+    const r = G.RARITY[item.rarity], card = $("itemCard");
+    let html;
+    if (equipped) {
+      html = colHtml(item, "裝備中", true);
+    } else {
       const cur = G.save.equipped[item.slot];
       const diff = G.itemScore(item) - G.itemScore(cur);
-      let curAff = "";
-      if (cur) {
-        for (const af of cur.affixes) {
-          const info = G.affixText(af);
-          curAff += `<div class="aff ${info.proc ? "proc" : ""}" style="opacity:.6">${info.proc ? "✦ " : "• "}${info.text}</div>`;
-        }
-        if (cur.affixes.length === 0) curAff = `<div class="aff" style="opacity:.45">（無特殊詞條）</div>`;
-      } else curAff = `<div class="aff" style="opacity:.45">（此欄位尚未裝備）</div>`;
-      cmp = `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #3a3358">` +
-        `<div style="font-size:13px;font-weight:700;margin-bottom:5px;color:${diff >= 0 ? "#7af5d0" : "#ff9bb0"}">${diff >= 0 ? "▲ 比目前裝備更好" : "▼ 比目前裝備差"}（評分 ${diff >= 0 ? "+" : ""}${diff}）</div>` +
-        `<div style="font-size:11px;color:#9b8fc0;margin-bottom:4px">目前 ${G.SLOT_INFO[item.slot].name}：${cur ? cur.baseName : "無"}</div>` +
-        curAff + `</div>`;
+      html = `<div class="cmpRow">${colHtml(item, "選擇的裝備", false)}${colHtml(cur, "目前裝備", true)}</div>` +
+        `<div style="text-align:center;font-size:13px;font-weight:700;margin-top:8px;color:${diff >= 0 ? "#7af5d0" : "#ff9bb0"}">${diff >= 0 ? "▲ 比目前更好" : "▼ 比目前差"}（評分 ${diff >= 0 ? "+" : ""}${diff}）</div>`;
     }
-    const wt = (item.slot === "weapon" && item.wtype && G.WEAPON_TYPES[item.wtype]) ? G.WEAPON_TYPES[item.wtype] : null;
-    const wline = wt ? `<div class="ibase" style="color:#ffd166">${wt.ic} ${wt.name}：${wt.desc}</div>` : "";
-    card.innerHTML =
-      `<div class="iname t-${r.cls}">${item.ic} ${item.baseName}</div>` +
-      `<div class="ibase">${r.name} · ${G.SLOT_INFO[item.slot].name} · iLv ${item.ilvl}</div>` +
-      wline + aff + cmp +
-      `<div class="acts">` +
+    html += `<div class="acts">` +
       (equipped
         ? `<button class="bSell" id="popUnequip">卸下</button>`
         : `<button class="bEquip" id="popEquip">裝備</button><button class="bSell" id="popSell">賣 🪙${r.sell}</button>`) +
-      `<button class="bClose" id="popClose">關閉</button>` +
-      `</div>`;
+      `<button class="bClose" id="popClose">關閉</button></div>`;
+    card.innerHTML = html;
     $("itemPop").classList.add("show");
-    if (equipped) {
-      $("popUnequip").onclick = () => { G.unequip(item.slot); G.closeItem(); };
-    } else {
-      $("popEquip").onclick = () => { G.equipItem(item); G.closeItem(); };
-      $("popSell").onclick = () => { G.sellItem(item); G.closeItem(); };
-    }
+    if (equipped) $("popUnequip").onclick = () => { G.unequip(item.slot); G.closeItem(); };
+    else { $("popEquip").onclick = () => { G.equipItem(item); G.closeItem(); }; $("popSell").onclick = () => { G.sellItem(item); G.closeItem(); }; }
     $("popClose").onclick = G.closeItem;
   };
   G.closeItem = function () { $("itemPop").classList.remove("show"); };
@@ -223,39 +216,107 @@
   G.openTalents = function () { renderTalents(); $("talPanel").classList.add("show"); };
   G.closeTalents = function () { $("talPanel").classList.remove("show"); };
 
-  // ---------- 城鎮商店 ----------
-  function renderShop() {
+  // ---------- 對話 / 劇情系統 ----------
+  let dlg = null;
+  function renderDlg() {
+    const c = dlg.cfg;
+    $("dlgIc").textContent = c.ic || "🧑"; $("dlgName").textContent = c.name || "";
+    $("dlgText").textContent = c.lines[dlg.i] || "";
+    const last = dlg.i >= c.lines.length - 1, opt = $("dlgOptions"); opt.innerHTML = "";
+    if (last && c.options && c.options.length) {
+      for (const o of c.options) { const b = document.createElement("button"); b.className = "dlgOpt"; b.textContent = o.label; b.onclick = (e) => { e.stopPropagation(); G.closeDialogue(); if (o.action) o.action(); }; opt.appendChild(b); }
+      opt.style.display = "flex"; $("dlgHint").style.display = "none";
+    } else { opt.style.display = "none"; $("dlgHint").style.display = last ? "none" : "block"; }
+  }
+  G.startDialogue = function (cfg) { dlg = { cfg, i: 0 }; renderDlg(); $("dlgPanel").classList.add("show"); };
+  G.dlgAdvance = function () { if (dlg && dlg.i < dlg.cfg.lines.length - 1) { dlg.i++; renderDlg(); } };
+  G.closeDialogue = function () { dlg = null; $("dlgPanel").classList.remove("show"); };
+  $("dlgPanel").addEventListener("click", (e) => { if (!e.target.closest("#dlgOptions")) G.dlgAdvance(); });
+
+  // 鐵匠對話入口
+  G.openBlacksmith = function () {
+    G.startDialogue({
+      name: "鐵匠", ic: "🔨",
+      lines: ["歡迎光臨，冒險者。", "你的裝備…我可以幫你打磨，或讓你賭一把運氣。"],
+      options: [
+        { label: "⚒️ 強化裝備", action: G.openEnhance },
+        { label: "🎲 賭裝（隨機部位）", action: G.openGamble },
+        { label: "離開", action: () => {} },
+      ],
+    });
+  };
+
+  // ---------- 城鎮商店：強化 ----------
+  function enhRow(it, slotLabel) {
+    const r = G.RARITY[it.rarity];
+    const row = document.createElement("div");
+    row.className = "talnode"; row.style.display = "flex"; row.style.justifyContent = "space-between"; row.style.alignItems = "center"; row.style.cursor = "pointer";
+    const maxed = (it.plus || 0) >= G.MAX_PLUS;
+    row.innerHTML = `<div><span class="t-${r.cls}" style="font-weight:700">${it.ic} ${it.baseName}${it.plus ? " +" + it.plus : ""}</span><div style="font-size:11px;color:#9b8fc0">${slotLabel}</div></div>`
+      + `<span style="font-size:12px;color:${maxed ? "#888" : "#7af5d0"}">${maxed ? "已滿級" : "成功率 " + Math.round(G.enhanceRate(it.plus || 0) * 100) + "%"}</span>`;
+    if (!maxed) row.onclick = () => G.openEnhanceConfirm(it);
+    return row;
+  }
+  G.openEnhance = function () {
+    $("shopTitle").textContent = "⚒️ 強化裝備";
     $("shopGold").textContent = "🪙 " + G.save.gold;
-    $("gambleHint").textContent = "每次花費 🪙" + G.gambleCost() + "，隨機詞條，越高等越好";
-    const gr = $("gambleRow"); gr.innerHTML = "";
+    const body = $("shopBody"); body.innerHTML = "";
+    const tip = document.createElement("div"); tip.style.cssText = "font-size:12px;color:#9b8fc0;margin-bottom:8px"; tip.textContent = "選擇裝備查看強化後數值與成功率（+5 以上可能失敗、+8 以上失敗會爆炸）"; body.appendChild(tip);
+    let any = false;
+    for (const slot of G.SLOTS) { const it = G.save.equipped[slot]; if (it) { any = true; body.appendChild(enhRow(it, "裝備中 · " + G.SLOT_INFO[slot].name)); } }
+    const bagItems = G.save.bag.slice().sort((a, b) => G.itemScore(b) - G.itemScore(a));
+    for (const it of bagItems) { any = true; body.appendChild(enhRow(it, "背包 · " + G.SLOT_INFO[it.slot].name)); }
+    if (!any) body.innerHTML = `<div style="color:#6b6480;text-align:center;padding:16px 0;font-size:13px">沒有可強化的裝備</div>`;
+    $("shopPanel").classList.add("show");
+  };
+  G.openEnhanceConfirm = function (item) {
+    const cur = item.plus || 0, rate = Math.round(G.enhanceRate(cur) * 100), cost = G.enhanceCost(item);
+    const mulNow = 1 + cur * 0.08, mulNext = 1 + (cur + 1) * 0.08;
+    let lines = "";
+    for (const af of item.affixes) {
+      const def = af.legend ? G.LEGEND_AFFIXES[af.id] : G.AFFIXES[af.id];
+      if (def.kind === "stat" && def.stat !== "projectiles" && def.stat !== "pierce") {
+        const now = Math.round(af.value * mulNow), nxt = Math.round(af.value * mulNext);
+        lines += `<div class="aff">• ${def.name}：${now} → <b style="color:#7af5d0">${nxt}</b></div>`;
+      } else { const info = G.affixText(af); lines += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`; }
+    }
+    const failTxt = cur >= 8 ? '失敗：裝備<b style="color:#ff6b6b">爆炸消失</b>' : (cur >= 5 ? "失敗：強化等級 −1" : "必定成功");
+    $("enhCard").innerHTML =
+      `<div class="iname t-${G.RARITY[item.rarity].cls}">${item.ic} ${item.baseName}　+${cur} → +${cur + 1}</div>` +
+      `<div class="ibase">成功率 <b style="color:${rate >= 60 ? "#7af5d0" : rate >= 35 ? "#ffd166" : "#ff8a8a"}">${rate}%</b>　花費 🪙${cost}</div>` +
+      lines + `<div style="font-size:12px;margin-top:8px;color:#cbb9e0">${failTxt}</div>` +
+      `<div class="acts"><button class="bEquip" id="enhDo">強化</button><button class="bClose" id="enhCancel">取消</button></div>`;
+    $("enhPop").classList.add("show");
+    $("enhDo").onclick = () => {
+      const res = G.tryEnhance(item); $("enhPop").classList.remove("show");
+      if (res.result === "success") G.toast("✨ 強化成功 → +" + item.plus);
+      else if (res.result === "down") G.toast("💢 失敗，強化等級 −1");
+      else if (res.result === "explode") G.toast("💥 失敗，裝備爆炸了！");
+      G.openEnhance();
+    };
+    $("enhCancel").onclick = () => $("enhPop").classList.remove("show");
+  };
+
+  // ---------- 城鎮商店：賭裝 ----------
+  G.openGamble = function () {
+    $("shopTitle").textContent = "🎲 賭裝";
+    $("shopGold").textContent = "🪙 " + G.save.gold;
+    const body = $("shopBody"); body.innerHTML = "";
+    const tip = document.createElement("div"); tip.style.cssText = "font-size:12px;color:#9b8fc0;margin-bottom:10px"; tip.textContent = "每次花費 🪙" + G.gambleCost() + "，隨機抽出該部位裝備（越高等越好）"; body.appendChild(tip);
+    const gr = document.createElement("div"); gr.style.cssText = "display:grid;grid-template-columns:repeat(4,1fr);gap:8px";
     for (const slot of G.SLOTS) {
       const info = G.SLOT_INFO[slot];
-      const d = document.createElement("div");
-      d.className = "eqslot"; d.style.cursor = "pointer";
+      const d = document.createElement("div"); d.className = "eqslot"; d.style.cursor = "pointer";
       d.innerHTML = `<div class="ic">${info.ic}</div><div class="lbl">${info.name}</div>`;
-      d.onclick = () => { const it = G.gamble(slot); if (it) renderShop(); };
+      d.onclick = () => { const it = G.gamble(slot); if (it) G.openGamble(); };
       gr.appendChild(d);
     }
-    const el = $("enhanceList"); el.innerHTML = "";
-    let any = false;
-    for (const slot of G.SLOTS) {
-      const it = G.save.equipped[slot]; if (!it) continue; any = true;
-      const r = G.RARITY[it.rarity];
-      const maxed = (it.plus || 0) >= G.MAX_PLUS;
-      const cost = G.enhanceCost(it);
-      const row = document.createElement("div");
-      row.className = "talnode"; row.style.display = "flex"; row.style.justifyContent = "space-between"; row.style.alignItems = "center";
-      row.innerHTML = `<div><span class="t-${r.cls}" style="font-weight:700">${it.ic} ${it.baseName}${it.plus ? " +" + it.plus : ""}</span><div style="font-size:11px;color:#9b8fc0">${G.SLOT_INFO[slot].name}</div></div>`
-        + `<button class="bEquip" style="border:none;border-radius:8px;padding:8px 12px;font-weight:700;color:#fff">${maxed ? "已滿級" : "強化 🪙" + cost}</button>`;
-      const btn = row.querySelector("button");
-      if (maxed) { btn.style.background = "#444"; btn.disabled = true; }
-      else btn.onclick = () => { if (G.enhanceItem(it)) renderShop(); };
-      el.appendChild(row);
-    }
-    if (!any) el.innerHTML = `<div style="color:#6b6480;text-align:center;padding:16px 0;font-size:13px">尚未裝備任何裝備</div>`;
-  }
-  G.renderShop = renderShop;
-  G.openShop = function () { renderShop(); $("shopPanel").classList.add("show"); };
+    body.appendChild(gr);
+    $("shopPanel").classList.add("show");
+  };
+
+  // 兼容：openShop 視為開啟鐵匠對話
+  G.openShop = function () { G.openBlacksmith(); };
   G.closeShop = function () { $("shopPanel").classList.remove("show"); };
 
 })();
