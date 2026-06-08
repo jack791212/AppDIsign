@@ -820,12 +820,14 @@
       ctx.textBaseline = "alphabetic";
     }
 
-    // 經驗球
+    // 經驗球（珍奶🧋／小籠包🥟，較好辨識）
     for (const o of w.orbs) {
-      const x = o.x - cx, y = o.y - cy;
-      ctx.fillStyle = "#7af5d0"; ctx.shadowColor = "#7af5d0"; ctx.shadowBlur = 6;
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = "#dffff5"; ctx.beginPath(); ctx.arc(x - 1.5, y - 1.5, 1.6, 0, Math.PI * 2); ctx.fill();
+      const x = o.x - cx, y = o.y - cy + Math.sin(o.age * 6) * 2;
+      ctx.globalAlpha = .3; ctx.fillStyle = "#7af5d0";
+      ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.font = "17px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(o.ic || "🧋", x, y);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
 
     // 粒子（線：閃電）

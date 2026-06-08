@@ -282,7 +282,7 @@
     const each = Math.max(1, Math.round(e.xp / n));
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, sp = rand(70, 170);
-      w.orbs.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, xp: each, age: 0 });
+      w.orbs.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, xp: each, age: 0, ic: Math.random() < 0.5 ? "🧋" : "🥟" });
     }
   };
   G.gainXp = function (n) {
