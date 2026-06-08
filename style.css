@@ -26,6 +26,18 @@ html, body {
 #sidebtns { position: fixed; left: 50%; transform: translateX(calc(var(--stage-w) / 2 - 62px));
   bottom: calc(env(safe-area-inset-bottom) + 14px);
   display: flex; flex-direction: column; gap: 10px; z-index: 6; }
+
+/* 主動技能按鈕（左下） */
+#skillBtns { position: fixed; left: 50%; transform: translateX(calc(var(--stage-w) / -2 + 12px));
+  bottom: calc(env(safe-area-inset-bottom) + 14px); display: flex; flex-direction: column; gap: 12px; z-index: 6; }
+.skillbtn { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #4dd0ff;
+  background: rgba(20,40,60,.85); color: #fff; font-size: 28px; display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; cursor: pointer; position: relative; overflow: hidden; }
+.skillbtn.ult { border-color: #ff7a4d; background: rgba(60,30,20,.85); }
+.skillbtn:active { transform: scale(.92); }
+.skillbtn .cd { position: absolute; inset: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 18px; font-weight: 800;
+  display: none; align-items: center; justify-content: center; }
+.skillbtn.cooling .cd { display: flex; }
 .iconbtn { width: 52px; height: 52px; border-radius: 14px; border: 2px solid rgba(255,255,255,.18);
   background: rgba(20,16,34,.8); color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center;
   pointer-events: auto; cursor: pointer; position: relative; }

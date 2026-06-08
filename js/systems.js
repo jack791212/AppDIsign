@@ -188,6 +188,9 @@
         else if (node.proc) procs[node.proc] = (procs[node.proc] || 0) + total;
       }
     }
+    // Boss 首殺戰利品：永久加成（長期目標）
+    const trophies = Object.values(s.killedBoss || {}).filter(Boolean).length;
+    if (trophies) { dmgPct += trophies * 3; hpFlat += trophies * 20; }
 
     // 武器類型：決定攻擊方式與倍率
     const wpn = s.equipped.weapon;
@@ -240,6 +243,7 @@
       G.computeStats();
       G.player.hp += (G.player.maxHp - prevMax); // 升級補上限差額
       G.player.hp = Math.min(G.player.hp, G.player.maxHp);
+      if (G.sfx) G.sfx("level");
       G.toast("⬆️ 升級！等級 " + s.level + "（+1 天賦點）");
       G.persist();
       if (G.refreshHud) G.refreshHud();
@@ -323,7 +327,7 @@
       typeId, name: t.name, x, y, r: t.r, color: t.color,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
-      baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: t.gold,
+      baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
       slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: false,
       cast: null, castCd: rand(0.6, 1.6), dashT: 0, dvx: 0, dvy: 0,
@@ -382,6 +386,7 @@
     const isCrit = Math.random() * 100 < p.crit;
     if (isCrit) dmg *= (1 + p.critDmg / 100);
     const dealt = G.dealDamage(e, dmg, isCrit);
+    if (G.sfx) G.sfx(isCrit ? "crit" : "hit");
     // 吸血
     if (procs.lifesteal > 0) G.healPlayer(dealt * procs.lifesteal / 100);
     // 冰霜減速
@@ -421,6 +426,7 @@
     const dmg = Math.max(1, Math.round(raw * (1 - reduction)));
     p.hp -= dmg; p.invuln = 0.5;
     G.shake(7, .25);
+    if (G.sfx) G.sfx("hurt");
     // 荊棘反傷
     if (p.procs.thorns > 0 && source && source.hp > 0) {
       G.dealDamage(source, raw * p.procs.thorns / 100, false);
@@ -436,6 +442,7 @@
     w.enemies.splice(i, 1);
     G.burst(e.x, e.y, e.color, e.boss ? 40 : 14);
     G.shake(e.boss ? 12 : 4, e.boss ? .4 : .12);
+    if (G.sfx) G.sfx(e.boss ? "boom" : "death");
     G.save.gold += e.gold;
     G.gainXp(e.xp);
     // 擊殺回血（傳奇）
@@ -443,9 +450,20 @@
     // 掉落
     G.rollLoot(e);
     if (e.boss) {
+      const first = !G.save.killedBoss[e.typeId];
       G.save.killedBoss[e.typeId] = true; w.boss = null;
+      if (first) {
+        // 首殺獎勵：額外金幣 + 額外傳奇，並獲得永久戰利品加成
+        const bonus = e.gold * 2;
+        G.save.gold += bonus;
+        const lg = G.rollItem((G.world.area.level || 1) + 3, null, "legend", 40);
+        if (G.addToBag) G.addToBag(lg);
+        G.computeStats();
+        G.toast("🏆 首殺 " + e.name + "！+🪙" + bonus + "、傳奇戰利品、永久強化");
+      } else {
+        G.toast("擊敗 " + e.name + "！");
+      }
       G.persist();
-      G.toast("🏆 擊敗 " + e.name + "！新區域已解鎖");
       if (G.refreshHud) G.refreshHud();
     }
   };
@@ -454,6 +472,14 @@
   G.vanishEnemy = function (e) {
     const w = G.world; const i = w.enemies.indexOf(e);
     if (i >= 0) w.enemies.splice(i, 1);
+    if (G.sfx) G.sfx("boom");
+  };
+
+  // 死亡懲罰：損失部分金幣
+  G.applyDeathPenalty = function () {
+    const lost = Math.floor(G.save.gold * 0.2);
+    G.save.gold -= lost; G.persist(); if (G.refreshHud) G.refreshHud();
+    return lost;
   };
 
   // 掉落

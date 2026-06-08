@@ -44,6 +44,7 @@
     }
     G.save.bag.push(item);
     const r = G.RARITY[item.rarity];
+    if (G.sfx) G.sfx("pickup");
     G.toast("拾取：" + item.baseName + "（" + r.name + "）");
     G.persist();
     const badge = $("bagBadge"); badge.style.display = "flex"; badge.textContent = G.save.bag.length;

@@ -46,10 +46,13 @@
     const k = e.key.toLowerCase();
     keys[k] = true;
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
-    // 快捷鍵：B 背包、C 天賦、T 回城
+    if (G.audioResume) G.audioResume();
+    // 快捷鍵：B 背包、C 天賦、T 回城、空白鍵衝刺、Q 大招
     if (k === "b") { e.preventDefault(); togglePanel("bagPanel", G.openBag, G.closeBag); }
     if (k === "c") { e.preventDefault(); togglePanel("talPanel", G.openTalents, G.closeTalents); }
     if (k === "t") { e.preventDefault(); startRecall(); }
+    if (k === " ") { e.preventDefault(); triggerDash(); }
+    if (k === "q") { e.preventDefault(); triggerUlt(); }
   });
   function togglePanel(id, openFn, closeFn) {
     if (!started || dead) return;
@@ -57,6 +60,37 @@
     if (el.classList.contains("show")) closeFn();
     else { G.closeBag(); G.closeTalents(); G.closeItem(); openFn(); }
   }
+  // ---------- 主動技能 ----------
+  let dashCd = 0, ultCd = 0;
+  const DASH_CD = 3, ULT_CD = 14;
+  function triggerDash() {
+    if (!started || dead || isPaused() || dashCd > 0) return;
+    let dx = 0, dy = 0;
+    if (controlMode === "keyboard") { const kv = keyboardVector(); dx = kv.dx; dy = kv.dy; }
+    else if (joy.active) { dx = joy.dx; dy = joy.dy; }
+    if (!dx && !dy) { dx = Math.cos(G.player.facing); dy = Math.sin(G.player.facing); }
+    const a = Math.atan2(dy, dx), p = G.player;
+    p.dashT = 0.16; p.dashVx = Math.cos(a) * 900; p.dashVy = Math.sin(a) * 900; p.invuln = Math.max(p.invuln, 0.35);
+    dashCd = DASH_CD; G.burst(p.x, p.y, "#4dd0ff", 12); if (G.sfx) G.sfx("dash");
+  }
+  function triggerUlt() {
+    if (!started || dead || isPaused() || ultCd > 0) return;
+    const p = G.player, w = G.world; ultCd = ULT_CD;
+    if (G.sfx) G.sfx("ult"); G.shake(12, .4);
+    for (let i = 0; i < 44; i++) { const a = i / 44 * Math.PI * 2; w.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 340, vy: Math.sin(a) * 340, life: .5, color: "#ffd166", r: 4 }); }
+    const R = 240;
+    for (const e of w.enemies.slice()) {
+      if (e.hp <= 0 || e.airborne) continue;
+      if (U.dist(e.x, e.y, p.x, p.y) < R + e.r) { G.onPlayerHit(e, 3.5); const a = Math.atan2(e.y - p.y, e.x - p.x); e.x += Math.cos(a) * 60; e.y += Math.sin(a) * 60; }
+    }
+  }
+  function updateSkillUI() {
+    const db = document.getElementById("dashBtn"), ub = document.getElementById("ultBtn");
+    if (!db) return;
+    if (dashCd > 0) { db.classList.add("cooling"); document.getElementById("dashCd").textContent = Math.ceil(dashCd); } else db.classList.remove("cooling");
+    if (ultCd > 0) { ub.classList.add("cooling"); document.getElementById("ultCd").textContent = Math.ceil(ultCd); } else ub.classList.remove("cooling");
+  }
+
   // 一鍵回城（受傷會中斷）
   let recalling = false, recallT = 0, recallPrevHp = 0;
   function startRecall() {
@@ -82,6 +116,7 @@
   function moveZoneTop() { return H * 0.8; } // 只有畫面下方 20% 是移動控制區
   function toLocalX(x) { return x - (window.innerWidth - W) / 2; } // 桌機畫面置中時換算為畫布座標
   function pStart(x, y, id) {
+    if (G.audioResume) G.audioResume();
     if (isPaused() || controlMode !== "touch") return;
     if (y < moveZoneTop()) return; // 點擊中間/上方不啟動移動，避免擋住角色
     x = toLocalX(x);
@@ -113,9 +148,9 @@
   }
   function playerAttack() {
     const cls = G.player.weaponClass;
-    if (cls === "melee") meleeSwing();
+    if (cls === "melee") { meleeSwing(); if (G.sfx) G.sfx("melee"); }
     else if (cls === "summon") { /* 召喚由 summon timer 處理，不直接攻擊 */ }
-    else fireProjectiles(G.player.weaponType === "staff");
+    else { fireProjectiles(G.player.weaponType === "staff"); if (G.sfx) G.sfx("shoot"); }
   }
   // 弓 / 法杖：發射投射物（法杖為追蹤）
   function fireProjectiles(homing) {
@@ -311,7 +346,7 @@
     e.atkCd -= dt;
     if (e.atkCd <= 0) { const id = U.pick(e.attacks); (ATTACKS[id] || ATTACKS.aimVolley)(e); e.atkCd = U.rand(1.5, 2.6); }
     e.ultCd -= dt;
-    if (e.ultCd <= 0) { e.ultState = "windup"; e.ultT = 0; e.ultDur = 1.9; }
+    if (e.ultCd <= 0) { e.ultState = "windup"; e.ultT = 0; e.ultDur = 1.9; if (G.sfx) G.sfx("bossWarn"); }
   }
 
   // ---------- 更新 ----------
@@ -319,20 +354,32 @@
     const w = G.world, p = G.player, area = w.area;
     w.time += dt;
 
-    // 玩家移動（依控制模式：鍵盤 WASD 或觸控搖桿）
-    let mvx = 0, mvy = 0, mag = 0;
-    if (controlMode === "keyboard") {
-      const kv = keyboardVector(); mvx = kv.dx; mvy = kv.dy; mag = kv.mag;
-    } else if (joy.active) {
-      mvx = joy.dx; mvy = joy.dy; mag = joy.mag;
-    }
-    p.moving = mag > 0.08;
-    if (p.moving) {
-      const a = Math.atan2(mvy, mvx);
-      p.x += Math.cos(a) * p.moveSpeed * mag * dt;
-      p.y += Math.sin(a) * p.moveSpeed * mag * dt;
-      p.x = U.clamp(p.x, p.r, area.w - p.r);
-      p.y = U.clamp(p.y, p.r, area.h - p.r);
+    // 技能冷卻
+    if (dashCd > 0) dashCd -= dt;
+    if (ultCd > 0) ultCd -= dt;
+    updateSkillUI();
+
+    // 玩家移動（衝刺優先；否則依控制模式：鍵盤 WASD 或觸控搖桿）
+    if (p.dashT > 0) {
+      p.dashT -= dt;
+      p.x = U.clamp(p.x + p.dashVx * dt, p.r, area.w - p.r);
+      p.y = U.clamp(p.y + p.dashVy * dt, p.r, area.h - p.r);
+      p.moving = true;
+    } else {
+      let mvx = 0, mvy = 0, mag = 0;
+      if (controlMode === "keyboard") {
+        const kv = keyboardVector(); mvx = kv.dx; mvy = kv.dy; mag = kv.mag;
+      } else if (joy.active) {
+        mvx = joy.dx; mvy = joy.dy; mag = joy.mag;
+      }
+      p.moving = mag > 0.08;
+      if (p.moving) {
+        const a = Math.atan2(mvy, mvx);
+        p.x += Math.cos(a) * p.moveSpeed * mag * dt;
+        p.y += Math.sin(a) * p.moveSpeed * mag * dt;
+        p.x = U.clamp(p.x, p.r, area.w - p.r);
+        p.y = U.clamp(p.y, p.r, area.h - p.r);
+      }
     }
     if (p.invuln > 0) p.invuln -= dt;
     // 再生
@@ -967,6 +1014,9 @@
   // ---------- 死亡 ----------
   G.onPlayerDeath = function () {
     dead = true; recalling = false;
+    const lost = G.applyDeathPenalty ? G.applyDeathPenalty() : 0;
+    const msg = document.getElementById("deathMsg");
+    if (msg) msg.innerHTML = "等級、裝備與戰利品都會保留。<br>損失 🪙<b>" + lost + "</b>（20% 金幣），回到城鎮重整旗鼓吧！";
     document.getElementById("deathScreen").classList.add("show");
   };
   function respawn() {
@@ -987,6 +1037,7 @@
 
   // ---------- 初始化 ----------
   function beginGame() {
+    if (G.audioResume) G.audioResume();
     G.computeStats();
     if (G.player.hp === undefined) G.player.hp = G.player.maxHp;
     started = true; dead = false;
@@ -1004,6 +1055,9 @@
     document.getElementById("shopBtn").onclick = G.openShop;
     document.getElementById("shopClose").onclick = G.closeShop;
     document.getElementById("recallBtn").onclick = startRecall;
+    document.getElementById("dashBtn").onclick = triggerDash;
+    document.getElementById("ultBtn").onclick = triggerUlt;
+    document.getElementById("muteBtn").onclick = () => { const m = G.toggleMute ? G.toggleMute() : false; document.getElementById("muteBtn").textContent = m ? "🔇" : "🔊"; };
     document.getElementById("startBtn").onclick = beginGame;
     document.getElementById("respawnBtn").onclick = respawn;
     const ct = document.getElementById("ctrlToggle");

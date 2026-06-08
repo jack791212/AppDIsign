@@ -26,10 +26,17 @@
 
 <!-- 側邊按鈕 -->
 <div id="sidebtns">
+  <div class="iconbtn" id="muteBtn">🔊</div>
   <div class="iconbtn" id="shopBtn" style="display:none">🏪</div>
   <div class="iconbtn" id="recallBtn">🏠</div>
   <div class="iconbtn" id="talBtn">🌳<span class="badge" id="talBadge" style="display:none">0</span></div>
   <div class="iconbtn" id="bagBtn">🎒<span class="badge" id="bagBadge" style="display:none">0</span></div>
+</div>
+
+<!-- 主動技能按鈕 -->
+<div id="skillBtns">
+  <div class="skillbtn" id="dashBtn">⚡<div class="cd" id="dashCd"></div></div>
+  <div class="skillbtn ult" id="ultBtn">💥<div class="cd" id="ultCd"></div></div>
 </div>
 
 <!-- 傳送門提示 -->
@@ -100,11 +107,12 @@
 <!-- 死亡畫面 -->
 <div class="overlay" id="deathScreen">
   <h1>💀 你倒下了</h1>
-  <p>別擔心，你的等級、裝備與金幣都會保留。<br>回到城鎮重整旗鼓吧！</p>
+  <p id="deathMsg">等級、裝備與戰利品都會保留。回到城鎮重整旗鼓吧！</p>
   <button class="btn" id="respawnBtn">回到城鎮</button>
 </div>
 
 <script src="js/data.js"></script>
+<script src="js/audio.js"></script>
 <script src="js/systems.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/game.js"></script>
