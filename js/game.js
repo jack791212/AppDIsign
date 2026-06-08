@@ -610,6 +610,7 @@
       }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       let dead2 = b.life <= 0 || b.x < -20 || b.x > area.w + 20 || b.y < -20 || b.y > area.h + 20;
+      if (!dead2) for (const o of w.obstacles) if (U.dist(b.x, b.y, o.x, o.y) < o.r) { dead2 = true; break; } // 被障礙物擋下
       if (!dead2) {
         for (const e of w.enemies) {
           if (e.hp <= 0 || e.airborne || b.hits.includes(e)) continue;
@@ -692,6 +693,7 @@
         if (dd > 0 && dd < e.r + o.r) { const pa = Math.atan2(e.y - o.y, e.x - o.x); const push = (e.r + o.r - dd) * .5; e.x += Math.cos(pa) * push; e.y += Math.sin(pa) * push; }
       }
       e.x = U.clamp(e.x, e.r, area.w - e.r); e.y = U.clamp(e.y, e.r, area.h - e.r);
+      for (const o of w.obstacles) { const dd = U.dist(e.x, e.y, o.x, o.y), mn = o.r + e.r; if (dd > 0 && dd < mn) { const oa = Math.atan2(e.y - o.y, e.x - o.x); e.x = o.x + Math.cos(oa) * mn; e.y = o.y + Math.sin(oa) * mn; } }
       // 接觸傷害（空中的 Boss 不造成接觸傷害）
       e.touchCd -= dt;
       if (!e.airborne && d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e, e.elem); e.touchCd = 0.6; }
@@ -723,7 +725,8 @@
       if (s.accel) { const ang = Math.atan2(s.vy, s.vx), sp = Math.hypot(s.vx, s.vy) + s.accel * dt; s.vx = Math.cos(ang) * sp; s.vy = Math.sin(ang) * sp; }
       s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
       const out = s.x < -30 || s.x > area.w + 30 || s.y < -30 || s.y > area.h + 30;
-      if (s.life <= 0 || out) { if (s.bloom && !out) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); continue; }
+      let blocked = false; for (const o of w.obstacles) if (U.dist(s.x, s.y, o.x, o.y) < o.r) { blocked = true; break; }
+      if (s.life <= 0 || out || blocked) { if (s.bloom && !out && !blocked) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); continue; }
       if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null, areaElem); if (s.bloom) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); }
     }
 
@@ -824,7 +827,7 @@
         else G.addToBag(g.item);
         w.grounds.splice(i, 1); continue;
       }
-      if (gd < pr || mag) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = Math.min(440, 130 + (pr - gd) * 3); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
+      if (gd < pr || mag) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = U.clamp(130 + (pr - gd) * 3, 150, 480); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
       else if (g.age > 60) w.grounds.splice(i, 1);
     }
 
@@ -834,7 +837,7 @@
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
       if (od < p.r + 14) { G.gainXp(o.xp); if (G.sfx) G.sfx("pickup"); w.orbs.splice(i, 1); continue; }
-      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.orbs.splice(i, 1);
     }
 
@@ -844,7 +847,7 @@
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
       if (od < p.r + 14) { G.save.gold += o.gold; document.getElementById("coins").textContent = "🪙 " + G.save.gold; if (G.sfx) G.sfx("pickup"); w.coins.splice(i, 1); continue; }
-      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.coins.splice(i, 1);
     }
 
