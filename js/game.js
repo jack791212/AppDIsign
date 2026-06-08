@@ -60,11 +60,12 @@
     if (el.classList.contains("show")) closeFn();
     else { G.closeBag(); G.closeTalents(); G.closeItem(); openFn(); }
   }
-  // ---------- 主動技能 ----------
+  // ---------- 主動技能（暫時關閉）----------
+  const SKILLS_ENABLED = false;
   let dashCd = 0, ultCd = 0;
   const DASH_CD = 3, ULT_CD = 14;
   function triggerDash() {
-    if (!started || dead || isPaused() || dashCd > 0) return;
+    if (!SKILLS_ENABLED || !started || dead || isPaused() || dashCd > 0) return;
     let dx = 0, dy = 0;
     if (controlMode === "keyboard") { const kv = keyboardVector(); dx = kv.dx; dy = kv.dy; }
     else if (joy.active) { dx = joy.dx; dy = joy.dy; }
@@ -74,7 +75,7 @@
     dashCd = DASH_CD; G.burst(p.x, p.y, "#4dd0ff", 12); if (G.sfx) G.sfx("dash");
   }
   function triggerUlt() {
-    if (!started || dead || isPaused() || ultCd > 0) return;
+    if (!SKILLS_ENABLED || !started || dead || isPaused() || ultCd > 0) return;
     const p = G.player, w = G.world; ultCd = ULT_CD;
     if (G.sfx) G.sfx("ult"); G.shake(12, .4);
     for (let i = 0; i < 44; i++) { const a = i / 44 * Math.PI * 2; w.particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 340, vy: Math.sin(a) * 340, life: .5, color: "#ffd166", r: 4 }); }
@@ -85,6 +86,8 @@
     }
   }
   function updateSkillUI() {
+    const sb = document.getElementById("skillBtns"); if (sb) sb.style.display = SKILLS_ENABLED ? "flex" : "none";
+    if (!SKILLS_ENABLED) return;
     const db = document.getElementById("dashBtn"), ub = document.getElementById("ultBtn");
     if (!db) return;
     if (dashCd > 0) { db.classList.add("cooling"); document.getElementById("dashCd").textContent = Math.ceil(dashCd); } else db.classList.remove("cooling");
@@ -95,6 +98,19 @@
   let combo = 0, comboTimer = 0, comboPulse = 0;
   const COMBO_TIME = 3;
   G.onKill = function () { combo++; comboTimer = COMBO_TIME; comboPulse = 1; };
+
+  // 開場劇情
+  const cine = { active: false, chief: null, talked: false };
+  function startIntro() {
+    cine.active = true; cine.talked = false; document.body.classList.add("cine");
+    cine.chief = { x: G.player.x, y: Math.max(50, G.player.y - 340) };
+  }
+  function endIntro() {
+    cine.active = false; cine.chief = null; document.body.classList.remove("cine");
+    const bow = { uid: Date.now(), slot: "weapon", baseName: "破舊短弓", ic: "🏹", wtype: "bow", rarity: "common", ilvl: 1, affixes: [], plus: 0 };
+    G.addToBag(bow); // 武器欄為空會自動裝備
+    G.save.introDone = true; G.persist(); if (G.refreshHud) G.refreshHud();
+  }
 
   // 一鍵回城（受傷會中斷）
   let recalling = false, recallT = 0, recallPrevHp = 0;
@@ -387,6 +403,16 @@
     const areaElem = area.elem || null;
     w.time += dt;
 
+    // 開場劇情：村長走向玩家，抵達後對話
+    if (cine.active && cine.chief) {
+      const tx = p.x, ty = p.y - 58, a = Math.atan2(ty - cine.chief.y, tx - cine.chief.x), d = U.dist(cine.chief.x, cine.chief.y, tx, ty);
+      if (d > 5) { cine.chief.x += Math.cos(a) * 200 * dt; cine.chief.y += Math.sin(a) * 200 * dt; }
+      else if (!cine.talked) {
+        cine.talked = true;
+        G.startDialogue({ name: "村長", ic: "👴", lines: ["英雄！你終於來拯救我的村子了！", "這把弓雖然破舊…先拿去防身吧。", "願你凱旋歸來！"], options: [{ label: "（接過破舊短弓）", action: endIntro }] });
+      }
+    }
+
     // 技能冷卻
     if (dashCd > 0) dashCd -= dt;
     if (ultCd > 0) ultCd -= dt;
@@ -417,7 +443,7 @@
       } else if (joy.active) {
         mvx = joy.dx; mvy = joy.dy; mag = joy.mag;
       }
-      p.moving = mag > 0.08 && !stunned;
+      p.moving = mag > 0.08 && !stunned && !cine.active;
       if (p.moving) {
         const a = Math.atan2(mvy, mvx), sp = p.moveSpeed * chillMul;
         p.x += Math.cos(a) * sp * mag * dt;
@@ -812,10 +838,15 @@
       ctx.restore();
     }
 
-    // 城鎮 NPC：靠近頭上出現按鈕
+    // 城鎮 NPC：站在自家房屋門口，靠近頭上出現按鈕
     npcBtns = [];
     if (area.npcs) for (const npc of area.npcs) {
       const x = npc.x - cx, y = npc.y - cy;
+      const roof = npc.action === "goddess" ? "#7a5a9e" : "#8a5a3a", wall = npc.action === "goddess" ? "#caa9e8" : "#caa07a";
+      ctx.fillStyle = wall; ctx.fillRect(x - 38, y - 86, 76, 64);
+      ctx.fillStyle = roof; ctx.beginPath(); ctx.moveTo(x - 48, y - 86); ctx.lineTo(x, y - 116); ctx.lineTo(x + 48, y - 86); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#3a2e26"; ctx.fillRect(x - 12, y - 46, 24, 26); // 門
+      ctx.fillStyle = "#ffe9a8"; ctx.fillRect(x + 16, y - 72, 12, 12); // 窗
       ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(x, y + 16, 16, 6, 0, 0, Math.PI * 2); ctx.fill();
       ctx.font = "32px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(npc.ic || "🧙", x, y);
@@ -1043,6 +1074,9 @@
     { const bw = p.r * 2.6, bx = px - bw / 2, by = py + p.r + 7;
       ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx, by, bw, 5);
       ctx.fillStyle = "#ff4d6d"; ctx.fillRect(bx, by, bw * U.clamp(p.hp / p.maxHp, 0, 1), 5); }
+    // 異常狀態文字（頭上）
+    { const st = []; if (p.burnT > 0) st.push("🔥燃燒"); if (p.chillT > 0) st.push("❄️緩速"); if (p.paraT > 0) st.push("⚡麻痺");
+      if (st.length) { ctx.font = "700 11px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe14d"; ctx.fillText(st.join(" "), px, py - p.r - 12); ctx.textAlign = "left"; } }
 
     // 圓形粒子 / 擴散環（AOE 特效）
     for (const pt of w.particles) {
@@ -1068,7 +1102,23 @@
     }
     ctx.globalAlpha = 1; ctx.textAlign = "left";
 
+    // 開場劇情：村長
+    if (cine.active && cine.chief) {
+      const x = cine.chief.x - cx, y = cine.chief.y - cy;
+      ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(x, y + 14, 14, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "30px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("👴", x, y);
+      ctx.font = "700 12px system-ui"; ctx.fillStyle = "#ffd166"; ctx.fillText("村長", x, y - 24);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    }
+
     ctx.restore(); // shake
+
+    // 劇情模式：只畫電影黑邊，隱藏所有 HUD
+    if (cine.active) {
+      const bar = H * 0.12;
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, bar); ctx.fillRect(0, H - bar, W, bar);
+      return;
+    }
 
     // 稀有以上掉落：螢幕邊緣指向箭頭
     drawLootArrows(cx, cy);
@@ -1086,7 +1136,7 @@
 
     // 連續擊殺顯示（更新時震動，擊殺越多震動越強）
     if (combo >= 2) {
-      const amp = U.clamp(combo * 0.3, 0, 6) + (comboPulse > 0 ? comboPulse * 5 : 0);
+      const amp = comboPulse > 0 ? comboPulse * (3 + U.clamp(combo * 0.4, 0, 8)) : 0; // 只在擊殺瞬間震動
       const ox = U.rand(-amp, amp), oy = U.rand(-amp, amp);
       ctx.save(); ctx.textAlign = "center";
       const sz = 22 + U.clamp(combo, 0, 30) * 0.6 + (comboPulse > 0 ? comboPulse * 6 : 0);
@@ -1151,6 +1201,7 @@
     }
     if (w.altar) { ctx.fillStyle = w.altar.summoning ? "#ff3030" : "#c79bff"; ctx.font = "9px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("✦", sx(w.altar.x), sy(w.altar.y)); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; }
     for (const g of w.grounds) {
+      if (g.special) { ctx.fillStyle = "#fff"; ctx.fillRect(sx(g.x) - 2, sy(g.y) - 2, 4, 4); continue; }
       if (g.item.rarity !== "rare" && g.item.rarity !== "legend") continue;
       ctx.fillStyle = G.RARITY[g.item.rarity].color;
       ctx.fillRect(sx(g.x) - 2, sy(g.y) - 2, 4, 4);
@@ -1169,7 +1220,7 @@
     const w = G.world;
     const ccx = W / 2, ccy = H / 2, mh = W / 2 - 26, mv = H / 2 - 26;
     for (const g of w.grounds) {
-      if (g.item.rarity !== "rare" && g.item.rarity !== "legend") continue;
+      if (g.special || !g.item || (g.item.rarity !== "rare" && g.item.rarity !== "legend")) continue;
       const sx = g.x - cx, sy = g.y - cy;
       if (sx >= 0 && sx <= W && sy >= 0 && sy <= H) continue; // 螢幕內不畫箭頭
       const ang = Math.atan2(sy - ccy, sx - ccx);
@@ -1219,8 +1270,10 @@
     if (G.player.hp === undefined) G.player.hp = G.player.maxHp;
     started = true; dead = false;
     document.getElementById("startScreen").classList.remove("show");
-    G.enterArea(G.save.area || "town");
+    const fresh = !G.save.introDone && G.save.level === 1 && !G.save.equipped.weapon && G.save.bag.length === 0;
+    G.enterArea(fresh ? "town" : (G.save.area || "town"));
     G.refreshHud();
+    if (fresh) startIntro();
     last = performance.now();
   }
 

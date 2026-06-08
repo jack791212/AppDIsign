@@ -108,6 +108,15 @@ html, body {
 #dlgOptions { display: none; flex-direction: column; gap: 8px; margin-top: 12px; }
 .dlgOpt { background: linear-gradient(180deg,#7c4dff,#5b2bd6); color: #fff; border: none; padding: 13px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
 .dlgOpt:active { transform: scale(.97); }
+/* 強化鐵鎚動畫 */
+.hammer { font-size: 48px; display: inline-block; transform-origin: 75% 75%; }
+.hammer.s1 { animation: hit1 .3s ease; }
+.hammer.s3 { animation: hit3 .5s ease; }
+@keyframes hit1 { 0% { transform: rotate(-42deg); } 50% { transform: rotate(12deg); } 100% { transform: rotate(-42deg); } }
+@keyframes hit3 { 0% { transform: rotate(-58deg); } 72% { transform: rotate(16deg); } 100% { transform: rotate(-40deg); } }
+.hammer.glow { filter: drop-shadow(0 0 14px #ffd166); }
+/* 劇情模式：隱藏遊戲 UI */
+body.cine #hud, body.cine #sidebtns, body.cine #skillBtns, body.cine #portalPrompt { display: none !important; }
 .itemcard { background: linear-gradient(160deg,#221b3a,#15101f); border: 2px solid #4b3b78; border-radius: 16px; padding: 18px; width: 100%; max-width: 320px; }
 .itemcard .iname { font-size: 19px; font-weight: 800; }
 .itemcard .ibase { font-size: 12px; color: #9b8fc0; margin-bottom: 10px; }

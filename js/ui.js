@@ -263,56 +263,70 @@
     });
   };
 
-  // ---------- 城鎮商店：強化 ----------
-  function enhRow(it, slotLabel) {
-    const r = G.RARITY[it.rarity];
-    const row = document.createElement("div");
-    row.className = "talnode"; row.style.display = "flex"; row.style.justifyContent = "space-between"; row.style.alignItems = "center"; row.style.cursor = "pointer";
-    const maxed = (it.plus || 0) >= G.MAX_PLUS;
-    row.innerHTML = `<div><span class="t-${r.cls}" style="font-weight:700">${it.ic} ${it.baseName}${it.plus ? " +" + it.plus : ""}</span><div style="font-size:11px;color:#9b8fc0">${slotLabel}</div></div>`
-      + `<span style="font-size:12px;color:${maxed ? "#888" : "#7af5d0"}">${maxed ? "已滿級" : "成功率 " + Math.round(G.enhanceRate(it.plus || 0) * 100) + "%"}</span>`;
-    if (!maxed) row.onclick = () => G.openEnhanceConfirm(it);
-    return row;
-  }
+  // ---------- 城鎮商店：強化（裝備中／背包中 區塊式）----------
   G.openEnhance = function () {
     $("shopTitle").textContent = "⚒️ 強化裝備";
     $("shopGold").textContent = "🪙 " + G.save.gold;
     const body = $("shopBody"); body.innerHTML = "";
-    const tip = document.createElement("div"); tip.style.cssText = "font-size:12px;color:#9b8fc0;margin-bottom:8px"; tip.textContent = "選擇裝備查看強化後數值與成功率（+5 以上可能失敗、+8 以上失敗會爆炸）"; body.appendChild(tip);
-    let any = false;
-    for (const slot of G.SLOTS) { const it = G.save.equipped[slot]; if (it) { any = true; body.appendChild(enhRow(it, "裝備中 · " + G.SLOT_INFO[slot].name)); } }
-    const bagItems = G.save.bag.slice().sort((a, b) => G.itemScore(b) - G.itemScore(a));
-    for (const it of bagItems) { any = true; body.appendChild(enhRow(it, "背包 · " + G.SLOT_INFO[it.slot].name)); }
-    if (!any) body.innerHTML = `<div style="color:#6b6480;text-align:center;padding:16px 0;font-size:13px">沒有可強化的裝備</div>`;
+    const tip = document.createElement("div"); tip.style.cssText = "font-size:12px;color:#9b8fc0;margin-bottom:8px"; tip.textContent = "點選裝備查看強化預覽（+5 以上可能失敗、+8 以上失敗會爆炸）"; body.appendChild(tip);
+    // 裝備中
+    const h1 = document.createElement("div"); h1.style.cssText = "font-size:13px;color:#ffd166;font-weight:700;margin:4px 0"; h1.textContent = "裝備中"; body.appendChild(h1);
+    const eq = document.createElement("div"); eq.style.cssText = "display:flex;gap:8px;margin-bottom:12px";
+    for (const slot of G.SLOTS) {
+      const it = G.save.equipped[slot], info = G.SLOT_INFO[slot];
+      const d = document.createElement("div"); d.className = "eqslot" + (it ? " r-" + G.RARITY[it.rarity].cls : "");
+      if (it) { d.innerHTML = `<div class="ic">${it.ic}</div><div class="nm t-${G.RARITY[it.rarity].cls}">${it.baseName}${it.plus ? " +" + it.plus : ""}</div>`; d.onclick = () => G.openEnhanceConfirm(it); }
+      else d.innerHTML = `<div class="ic" style="opacity:.4">${info.ic}</div><div class="lbl">${info.name}</div>`;
+      eq.appendChild(d);
+    }
+    body.appendChild(eq);
+    // 背包中
+    const h2 = document.createElement("div"); h2.style.cssText = "font-size:13px;color:#7af5d0;font-weight:700;margin:4px 0"; h2.textContent = "背包中"; body.appendChild(h2);
+    const grid = document.createElement("div"); grid.style.cssText = "display:grid;grid-template-columns:repeat(4,1fr);gap:8px";
+    const bag = G.save.bag.slice().sort((a, b) => G.itemScore(b) - G.itemScore(a));
+    if (!bag.length) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b6480;padding:16px 0;font-size:13px">背包沒有裝備</div>`;
+    for (const it of bag) { const r = G.RARITY[it.rarity]; const d = document.createElement("div"); d.className = "itemcell r-" + r.cls; d.innerHTML = `<div class="ic">${it.ic}</div><div class="nm t-${r.cls}">${it.baseName}${it.plus ? " +" + it.plus : ""}</div>`; d.onclick = () => G.openEnhanceConfirm(it); grid.appendChild(d); }
+    body.appendChild(grid);
     $("shopPanel").classList.add("show");
   };
-  G.openEnhanceConfirm = function (item) {
-    const cur = item.plus || 0, rate = Math.round(G.enhanceRate(cur) * 100), cost = G.enhanceCost(item);
+  G.openEnhanceConfirm = function (item) { renderEnhConfirm(item); $("enhPop").classList.add("show"); };
+  function renderEnhConfirm(item) {
+    const cur = item.plus || 0, rate = Math.round(G.enhanceRate(cur) * 100), cost = G.enhanceCost(item), maxed = cur >= G.MAX_PLUS;
     const mulNow = 1 + cur * 0.08, mulNext = 1 + (cur + 1) * 0.08;
     let lines = "";
     for (const af of item.affixes) {
       const def = af.legend ? G.LEGEND_AFFIXES[af.id] : G.AFFIXES[af.id];
-      if (def.kind === "stat" && def.stat !== "projectiles" && def.stat !== "pierce") {
-        const now = Math.round(af.value * mulNow), nxt = Math.round(af.value * mulNext);
-        lines += `<div class="aff">• ${def.name}：${now} → <b style="color:#7af5d0">${nxt}</b></div>`;
-      } else { const info = G.affixText(af); lines += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`; }
+      if (def.kind === "stat" && def.stat !== "projectiles" && def.stat !== "pierce") lines += `<div class="aff">• ${def.name}：${Math.round(af.value * mulNow)} → <b style="color:#7af5d0">${Math.round(af.value * mulNext)}</b></div>`;
+      else { const info = G.affixText(af); lines += `<div class="aff ${info.proc ? "proc" : ""}">${info.proc ? "✦ " : "• "}${info.text}</div>`; }
     }
     const failTxt = cur >= 8 ? '失敗：裝備<b style="color:#ff6b6b">爆炸消失</b>' : (cur >= 5 ? "失敗：強化等級 −1" : "必定成功");
     $("enhCard").innerHTML =
-      `<div class="iname t-${G.RARITY[item.rarity].cls}">${item.ic} ${item.baseName}　+${cur} → +${cur + 1}</div>` +
+      `<div class="iname t-${G.RARITY[item.rarity].cls}">${item.ic} ${item.baseName}　+${cur}${maxed ? "（滿級）" : " → +" + (cur + 1)}</div>` +
       `<div class="ibase">成功率 <b style="color:${rate >= 60 ? "#7af5d0" : rate >= 35 ? "#ffd166" : "#ff8a8a"}">${rate}%</b>　花費 🪙${cost}</div>` +
       lines + `<div style="font-size:12px;margin-top:8px;color:#cbb9e0">${failTxt}</div>` +
-      `<div class="acts"><button class="bEquip" id="enhDo">強化</button><button class="bClose" id="enhCancel">取消</button></div>`;
-    $("enhPop").classList.add("show");
-    $("enhDo").onclick = () => {
-      const res = G.tryEnhance(item); $("enhPop").classList.remove("show");
-      if (res.result === "success") G.toast("✨ 強化成功 → +" + item.plus);
-      else if (res.result === "down") G.toast("💢 失敗，強化等級 −1");
-      else if (res.result === "explode") G.toast("💥 失敗，裝備爆炸了！");
-      G.openEnhance();
-    };
-    $("enhCancel").onclick = () => $("enhPop").classList.remove("show");
-  };
+      `<div class="acts">` + (maxed ? "" : `<button class="bEquip" id="enhDo">強化</button>`) + `<button class="bClose" id="enhClose">關閉</button></div>`;
+    $("enhClose").onclick = () => $("enhPop").classList.remove("show");
+    if (!maxed) $("enhDo").onclick = () => playHammerThenResolve(item);
+  }
+  function playHammerThenResolve(item) {
+    $("enhCard").innerHTML = `<div style="text-align:center;padding:26px 6px"><div class="hammer" id="hmr">🔨</div><div style="margin-top:12px;color:#cbb9e0">強化中…</div></div>`;
+    const h = $("hmr");
+    const beat = (cls, t) => setTimeout(() => { if (!h) return; h.classList.remove("s1", "s3"); void h.offsetWidth; h.classList.add(cls); if (G.sfx) G.sfx("hit"); }, t);
+    beat("s1", 60); beat("s1", 360); beat("s3", 760); // 第三下較慢
+    setTimeout(() => { if (h) h.classList.add("glow"); if (G.sfx) G.sfx("level"); }, 1300);
+    setTimeout(() => { const res = G.tryEnhance(item); G.openEnhance(); showEnhResult(item, res); }, 1650);
+  }
+  function showEnhResult(item, res) {
+    let msg, color, gone = res.result === "explode";
+    if (res.result === "success") { msg = "✨ 強化成功！ → +" + item.plus; color = "#7af5d0"; }
+    else if (res.result === "down") { msg = "💢 強化失敗，等級 −1"; color = "#ffae5e"; }
+    else if (res.result === "explode") { msg = "💥 強化失敗，裝備爆炸了！"; color = "#ff6b6b"; }
+    else { $("enhPop").classList.remove("show"); return; }
+    $("enhCard").innerHTML = `<div style="text-align:center;padding:18px 6px"><div style="font-size:20px;font-weight:800;color:${color}">${msg}</div></div>` +
+      `<div class="acts">` + (gone ? "" : `<button class="bEquip" id="enhAgain">再次強化</button>`) + `<button class="bClose" id="enhClose2">完成</button></div>`;
+    if (!gone) $("enhAgain").onclick = () => renderEnhConfirm(item);
+    $("enhClose2").onclick = () => $("enhPop").classList.remove("show");
+  }
 
   // ---------- 城鎮商店：賭裝 ----------
   G.openGamble = function () {
