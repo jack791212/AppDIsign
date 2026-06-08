@@ -47,12 +47,15 @@
     for (const k in G.AFFIXES) if (G.AFFIXES[k].slots.includes(slot)) pool.push(G.AFFIXES[k]);
     return pool;
   }
-  function rollRarity(luckBonus) {
-    let entries = G.RARITY_ORDER.map(id => [id, G.RARITY[id].weight]);
-    // luckBonus 提升高階權重
-    if (luckBonus) {
-      entries = entries.map(([id, w]) => [id, id === "common" ? Math.max(5, w - luckBonus) : w + luckBonus * 0.4]);
-    }
+  // lvl=該區等級（或玩家等級）。越深關卡高品質才逐步出現；早期幾乎全白、零星藍
+  function rollRarity(lvl) {
+    lvl = lvl || 0;
+    const entries = [
+      ["common", 100],
+      ["magic",  Math.min(60, lvl * 4)],
+      ["rare",   Math.max(0, (lvl - 6) * 2.5)],
+      ["legend", Math.max(0, (lvl - 14) * 1.0)],
+    ];
     const total = entries.reduce((s, e) => s + e[1], 0);
     let r = Math.random() * total;
     for (const [id, w] of entries) { if ((r -= w) <= 0) return id; }
@@ -259,7 +262,7 @@
     p.armor = armorFlat;
     p.minionPct = minionPct;
     p.rangePct = rangePct;
-    p.pickRange = 60 + pickRange;
+    p.pickRange = 28 + pickRange;
     p.procs = procs;
     p.bulletSpeed = 560;
     if (p.hp === undefined || p.hp > p.maxHp) p.hp = p.maxHp;
@@ -327,7 +330,7 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
@@ -335,8 +338,8 @@
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.flashes = []; w.extraPortals = []; w.summonTimer = 1;
-    w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
+    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.flashes = []; w.extraPortals = []; w.obstacles = []; w.summonTimer = 1;
+    w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0; w.chest = null; w.killCount = 0;
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
       if (entryPortalFrom && G.AREAS[entryPortalFrom] && !G.AREAS[entryPortalFrom].safe) G.save.recallReturn = entryPortalFrom;
@@ -368,9 +371,21 @@
       }
       w.altar = { x: ax, y: ay, r: 85, progress: 0, summoning: false, delay: 0 };
     }
+    // 障礙物（戰鬥區隨機石塊，阻擋移動；避開出生點/傳送門/祭壇）
     if (!area.safe) {
-      const n = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive);
-      for (let i = 0; i < n; i++) spawnEnemy(true);
+      const n = 6 + Math.floor(area.level / 8);
+      for (let i = 0; i < n; i++) {
+        let ox, oy, r, ok = false;
+        for (let t = 0; t < 30 && !ok; t++) {
+          r = rand(30, 55); ox = rand(80, area.w - 80); oy = rand(80, area.h - 80);
+          ok = dist(ox, oy, G.player.x, G.player.y) > 160;
+          if (ok && w.altar) ok = dist(ox, oy, w.altar.x, w.altar.y) > 140;
+          if (ok) for (const pt of area.portals) if (dist(ox, oy, pt.x, pt.y) < 150) { ok = false; break; }
+        }
+        if (ok) w.obstacles.push({ x: ox, y: oy, r });
+      }
+      const cnt = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive);
+      for (let i = 0; i < cnt; i++) spawnEnemy(true);
     }
     if (G.refreshHud) G.refreshHud();
   };
@@ -404,7 +419,7 @@
       typeId, name: t.name, ic: t.ic, x, y, r: t.r, color: t.color, lvl: area.level,
       elem: typeId === "bomber" ? "fire" : (area.elem || null),
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
-      dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
+      dmg: Math.round(t.dmg * (1 + area.level * 0.2)), speed: t.speed,
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
       slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: false,
@@ -422,7 +437,7 @@
     const b = {
       typeId: area.boss, name: t.name, ic: t.ic, x: bx, y: by, r: t.r, color: t.color, lvl: area.level, elem: area.elem || null,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
-      dmg: t.dmg, speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
+      dmg: Math.round(t.dmg * (1 + area.level * 0.05)), speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
       behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: true,
       cast: null, castCd: 0, dashT: 0, dvx: 0, dvy: 0,
       attacks: t.attacks || ["aimVolley"], ults: t.ults || ["novaRing"],
@@ -551,6 +566,7 @@
     if (G.sfx) G.sfx(e.boss ? "boom" : "death");
     G.spawnCoins(e); // 金幣改為地上硬幣，需拾取
     G.spawnXpOrbs(e); // 經驗改為經驗球，需拾取
+    if (!e.boss) w.killCount = (w.killCount || 0) + 1; // 開啟祭壇所需擊殺數
     if (G.onKill) G.onKill(); // 連殺計數
     // 擊殺回血（傳奇）
     if (G.player.procs.killHeal > 0) G.healPlayer(G.player.maxHp * G.player.procs.killHeal / 100);
@@ -609,8 +625,15 @@
     }
   };
   function dropGround(x, y, item) {
-    G.world.grounds.push({ x, y, item, bob: 0, age: 0 });
+    G.world.grounds.push({ x: x + rand(-26, 26), y: y + rand(-26, 26), item, bob: 0, age: 0 });
   }
+  // 寶箱掉落：比一般更高機率出好東西
+  G.chestLoot = function (x, y, area) {
+    const lvl = (area.level || 1) + 18; // 大幅提升稀有度權重
+    const n = randInt(2, 4);
+    for (let k = 0; k < n; k++) dropGround(x + rand(-40, 40), y + rand(-40, 40), G.rollItem((area.level || 1) + 2, null, null, lvl));
+    G.spawnCoins({ x, y, gold: 20 + (area.level || 1) * 6 });
+  };
   function dropSpecial(x, y, special) {
     G.world.grounds.push({ x, y, special, bob: 0, age: 0 });
   }

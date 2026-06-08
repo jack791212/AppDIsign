@@ -96,8 +96,22 @@
 
   // 連續擊殺
   let combo = 0, comboTimer = 0, comboPulse = 0;
-  const COMBO_TIME = 3;
-  G.onKill = function () { combo++; comboTimer = COMBO_TIME; comboPulse = 1; };
+  const COMBO_TIME = 3, CHEST_KILLS = 20, KILLS_FOR_BOSS = 50;
+  G.onKill = function () {
+    combo++; comboTimer = COMBO_TIME; comboPulse = 1;
+    if (combo >= CHEST_KILLS) { spawnChest(); combo = 0; }
+  };
+  function spawnChest() {
+    const w = G.world, area = w.area; if (!area || area.safe) return;
+    let x, y, ok = false;
+    for (let t = 0; t < 30 && !ok; t++) {
+      x = U.rand(120, area.w - 120); y = U.rand(120, area.h - 120);
+      ok = U.dist(x, y, G.player.x, G.player.y) > 120;
+      if (ok) for (const o of w.obstacles) if (U.dist(x, y, o.x, o.y) < o.r + 40) { ok = false; break; }
+    }
+    w.chest = { x, y, age: 0 };
+    G.toast("🎁 寶箱出現了！");
+  }
 
   // 開場劇情
   const cine = { active: false, chief: null, talked: false };
@@ -454,6 +468,8 @@
         p.y = U.clamp(p.y, p.r, area.h - p.r);
       }
     }
+    // 障礙物阻擋
+    for (const o of w.obstacles) { const dd = U.dist(p.x, p.y, o.x, o.y), min = o.r + p.r; if (dd > 0 && dd < min) { const a = Math.atan2(p.y - o.y, p.x - o.x); p.x = o.x + Math.cos(a) * min; p.y = o.y + Math.sin(a) * min; } }
     if (p.invuln > 0) p.invuln -= dt;
     // 再生
     if (p.procs.regen > 0) G.healPlayer(p.procs.regen * dt);
@@ -718,11 +734,16 @@
         if (al.summoning) {
           al.delay -= dt;
           if (al.delay <= 0) { G.spawnBoss(al.x, al.y); w.altar = null; }
-        } else {
+        } else if ((w.killCount || 0) >= KILLS_FOR_BOSS) { // 需先擊殺 50 隻
           const inside = U.dist(p.x, p.y, al.x, al.y) < al.r;
           al.progress = U.clamp(al.progress + (inside ? dt / 3.5 : -dt * 0.5), 0, 1);
           if (al.progress >= 1) { al.summoning = true; al.delay = 2.0; G.toast("⚠ 祭壇啟動！Boss 即將降臨…"); }
         }
+      }
+      // 寶箱拾取
+      if (w.chest) {
+        w.chest.age += dt;
+        if (U.dist(p.x, p.y, w.chest.x, w.chest.y) < p.r + 22) { G.chestLoot(w.chest.x, w.chest.y, area); G.toast("🎁 開啟寶箱！"); if (G.sfx) G.sfx("level"); w.chest = null; }
       }
     }
 
@@ -834,6 +855,14 @@
     ctx.strokeStyle = "rgba(120,100,180,.5)"; ctx.lineWidth = 4;
     ctx.strokeRect(-cx, -cy, area.w, area.h);
 
+    // 障礙物（石塊）
+    for (const o of w.obstacles) {
+      const x = o.x - cx, y = o.y - cy;
+      ctx.fillStyle = "#5a5048"; ctx.beginPath(); ctx.arc(x, y, o.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#6b5f54"; ctx.beginPath(); ctx.arc(x - o.r * .25, y - o.r * .25, o.r * .6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, o.r, 0, Math.PI * 2); ctx.stroke();
+    }
+
     // 傳送門
     for (const pt of getPortals()) {
       const x = pt.x - cx, y = pt.y - cy;
@@ -904,29 +933,34 @@
       ctx.textAlign = "left"; ctx.restore();
     }
 
-    // 地面道具
-    for (const g of w.grounds) {
-      const x = g.x - cx, y = g.y - cy + g.bob;
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      if (g.special === "magnet") { ctx.font = "22px system-ui"; ctx.fillText("🧲", x, g.y - cy + Math.sin(g.age * 5) * 3); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left"; continue; }
-      const r = G.RARITY[g.item.rarity], order = G.RARITY_ORDER.indexOf(g.item.rarity);
-      // 品質光束（依稀有度顏色，越高越明顯）
-      const bh = 42 + order * 16, grd = ctx.createLinearGradient(0, y - bh, 0, y);
-      grd.addColorStop(0, "rgba(0,0,0,0)"); grd.addColorStop(1, r.color);
-      ctx.globalAlpha = .35 + order * .15; ctx.fillStyle = grd; ctx.fillRect(x - 5, y - bh, 10, bh); ctx.globalAlpha = 1;
-      // 裝備底部圓框（僅裝備有）
-      ctx.fillStyle = r.color; ctx.globalAlpha = .25; ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      ctx.font = "20px system-ui"; ctx.fillText(g.item.ic, x, y);
-      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-    }
-
-    // 經驗球（珍奶🧋／小籠包🥟）與金幣🪙：無圓框，純圖示
+    // 經驗球🧋🥟／金幣🪙（先畫，裝備會蓋在上面）
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.font = "18px system-ui";
     for (const o of w.orbs) ctx.fillText(o.ic || "🧋", o.x - cx, o.y - cy + Math.sin(o.age * 6) * 2);
     ctx.font = "16px system-ui";
     for (const o of w.coins) ctx.fillText("🪙", o.x - cx, o.y - cy + Math.sin(o.age * 7) * 2);
     ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+
+    // 寶箱
+    if (w.chest) {
+      const x = w.chest.x - cx, y = w.chest.y - cy + Math.sin(w.chest.age * 4) * 3;
+      ctx.globalAlpha = .35; ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.font = "26px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("🎁", x, y); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    }
+
+    // 地面裝備（畫在最上層，並有品質光束）
+    for (const g of w.grounds) {
+      const x = g.x - cx, y = g.y - cy + g.bob;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      if (g.special === "magnet") { ctx.font = "22px system-ui"; ctx.fillText("🧲", x, g.y - cy + Math.sin(g.age * 5) * 3); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left"; continue; }
+      const r = G.RARITY[g.item.rarity], order = G.RARITY_ORDER.indexOf(g.item.rarity);
+      const bh = 42 + order * 16, grd = ctx.createLinearGradient(0, y - bh, 0, y);
+      grd.addColorStop(0, "rgba(0,0,0,0)"); grd.addColorStop(1, r.color);
+      ctx.globalAlpha = .35 + order * .15; ctx.fillStyle = grd; ctx.fillRect(x - 5, y - bh, 10, bh); ctx.globalAlpha = 1;
+      ctx.fillStyle = r.color; ctx.globalAlpha = .25; ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.font = "20px system-ui"; ctx.fillText(g.item.ic, x, y);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    }
 
     // 粒子（線：閃電）
     for (const pt of w.particles) {
@@ -1058,6 +1092,9 @@
       }
     }
 
+    // 拾取範圍示意（白圈）
+    { ctx.globalAlpha = .18; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x - cx, p.y - cy, p.pickRange || 28, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
+
     // 玩家
     const px = p.x - cx, py = p.y - cy;
     ctx.save(); ctx.translate(px, py);
@@ -1149,21 +1186,24 @@
       ctx.fillStyle = "#3ad0ff"; ctx.fillRect(0, yb, W * U.clamp(G.save.xp / G.xpForLevel(G.save.level), 0, 1), 6);
     }
 
-    // 連續擊殺顯示（更新時震動，擊殺越多震動越強）
-    if (combo >= 2) {
-      const amp = comboPulse > 0 ? comboPulse * (3 + U.clamp(combo * 0.4, 0, 8)) : 0; // 只在擊殺瞬間震動
-      const ox = U.rand(-amp, amp), oy = U.rand(-amp, amp);
-      ctx.save(); ctx.textAlign = "center";
-      const sz = 22 + U.clamp(combo, 0, 30) * 0.6 + (comboPulse > 0 ? comboPulse * 6 : 0);
-      ctx.font = "900 " + sz + "px system-ui";
+    // 連續擊殺（右側、輕微震動、含寶箱刷新進度）
+    if (combo >= 1) {
+      const amp = comboPulse > 0 ? comboPulse * 1.6 : 0; // 弱震
+      const rx = W - 16, ry = 150;
+      ctx.save(); ctx.textAlign = "right";
+      ctx.font = "800 16px system-ui";
       ctx.fillStyle = combo >= 15 ? "#ff5470" : combo >= 8 ? "#ffae5e" : "#ffd166";
-      ctx.fillText("🔥 連殺 x" + combo, W / 2 + ox, 132 + oy);
-      // 倒數條
-      const bw = 120, bx = W / 2 - bw / 2;
-      ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(bx, 140, bw, 4);
-      ctx.fillStyle = "#ffd166"; ctx.fillRect(bx, 140, bw * U.clamp(comboTimer / COMBO_TIME, 0, 1), 4);
+      ctx.fillText("🔥 x" + combo, rx + U.rand(-amp, amp), ry + U.rand(-amp, amp));
+      // 寶箱刷新進度（連殺 / 20）
+      const bw = 90, bx = rx - bw, by = ry + 8;
+      ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(bx, by, bw, 5);
+      ctx.fillStyle = "#9be86a"; ctx.fillRect(bx, by, bw * U.clamp(combo / CHEST_KILLS, 0, 1), 5);
+      ctx.font = "700 10px system-ui"; ctx.fillStyle = "#cbb9e0"; ctx.fillText("🎁 " + combo + "/" + CHEST_KILLS, rx, by + 16);
       ctx.restore(); ctx.textAlign = "left";
     }
+
+    // 關卡進度 / 引導（頂部置中）
+    drawStageStatus(area, cx, cy);
 
     // 移動控制區（觸控）：下方 15% 實心、固定搖桿
     if (controlMode === "touch") {
@@ -1231,6 +1271,33 @@
   }
 
   // ---------- 稀有以上掉落的邊緣箭頭 ----------
+  function drawStageStatus(area, cx, cy) {
+    const w = G.world; if (area.safe) return;
+    const cleared = area.boss && G.save.killedBoss[area.boss];
+    let txt, col = "#ffd166";
+    if (cleared) { txt = "✅ 已通關！前往下一關"; col = "#7af5d0"; }
+    else if ((w.boss && w.boss.hp > 0) || w.bossSpawned) { txt = "⚔ 擊敗 " + (w.boss ? w.boss.name : "Boss"); col = "#ff8a8a"; }
+    else if ((w.killCount || 0) >= KILLS_FOR_BOSS) { txt = "前往祭壇 ✦ 召喚 Boss"; col = "#c9a0ff"; }
+    else { txt = "擊殺進度 " + (w.killCount || 0) + " / " + KILLS_FOR_BOSS + " 開啟祭壇"; }
+    ctx.save(); ctx.textAlign = "center"; ctx.font = "700 14px system-ui";
+    const tw = ctx.measureText(txt).width + 22;
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(W / 2 - tw / 2, 94, tw, 23);
+    ctx.fillStyle = col; ctx.textBaseline = "middle"; ctx.fillText(txt, W / 2, 106);
+    ctx.restore(); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    if (cleared) { const nxt = area.portals.find(pt => pt.reqLevel); if (nxt) drawGuideArrow(nxt.x - cx, nxt.y - cy); }
+  }
+  function drawGuideArrow(sx, sy) {
+    if (sx >= 0 && sx <= W && sy >= 0 && sy <= H) return;
+    const ccx = W / 2, ccy = H / 2, mh = W / 2 - 30, mv = H / 2 - 30, ang = Math.atan2(sy - ccy, sx - ccx);
+    const tX = Math.abs(Math.cos(ang)) < 1e-3 ? 1e9 : mh / Math.abs(Math.cos(ang));
+    const tY = Math.abs(Math.sin(ang)) < 1e-3 ? 1e9 : mv / Math.abs(Math.sin(ang));
+    const t = Math.min(tX, tY), tx = ccx + Math.cos(ang) * t, ty = ccy + Math.sin(ang) * t;
+    ctx.save(); ctx.translate(tx, ty); ctx.rotate(ang);
+    ctx.fillStyle = "#7af5d0"; ctx.shadowColor = "#7af5d0"; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, -11); ctx.lineTo(-8, 11); ctx.fill(); ctx.restore();
+    ctx.fillStyle = "#7af5d0"; ctx.font = "700 11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("下一關", tx - Math.cos(ang) * 22, ty - Math.sin(ang) * 22); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  }
   function drawLootArrows(cx, cy) {
     const w = G.world;
     const ccx = W / 2, ccy = H / 2, mh = W / 2 - 26, mv = H / 2 - 26;
