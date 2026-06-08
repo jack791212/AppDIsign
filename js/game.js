@@ -225,10 +225,23 @@
     if (!c.fired && c.t >= c.dur) {
       c.fired = true;
       e.lastCastAng = c.ang;
-      if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e, e.elem);
+      if (c.dmg > 0 && castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e, e.elem);
+      addFlash(c, elemColor(e.elem)); // 全範圍命中特效
       const cb = c.onFire; e.cast = null; e.castCd = c.cd || 1.6;
       if (cb) cb(e);
     }
+  }
+  function elemColor(elem) { return elem === "fire" ? "#ff7a3a" : elem === "frost" ? "#7fd0ff" : elem === "lightning" ? "#cfa0ff" : "#ff5a5a"; }
+  function addFlash(c, color) {
+    G.world.flashes.push({ shape: c.shape, ox: c.ox, oy: c.oy, ang: c.ang || 0, radius: c.radius, arcHalf: c.arcHalf, length: c.length, width: c.width, centered: c.centered, t: 0, life: 0.22, color: color || "#ff5a5a" });
+  }
+  function drawFlash(f, cx, cy) {
+    ctx.save(); ctx.translate(f.ox - cx, f.oy - cy); if (f.shape !== "circle") ctx.rotate(f.ang);
+    ctx.globalAlpha = U.clamp(1 - f.t / f.life, 0, 1) * 0.55; ctx.fillStyle = f.color;
+    if (f.shape === "circle") { ctx.beginPath(); ctx.arc(0, 0, f.radius, 0, Math.PI * 2); ctx.fill(); }
+    else if (f.shape === "sector") { ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, f.radius, -f.arcHalf, f.arcHalf); ctx.closePath(); ctx.fill(); }
+    else { if (f.centered) ctx.fillRect(-f.length / 2, -f.width / 2, f.length, f.width); else ctx.fillRect(0, -f.width / 2, f.length, f.width); }
+    ctx.globalAlpha = 1; ctx.restore();
   }
   function castContains(c, px, py, pr) {
     if (c.shape === "circle") return U.dist(px, py, c.ox, c.oy) <= c.radius + pr;
@@ -539,7 +552,7 @@
           case "charger": {
             // 進入距離內停下，矩形讀條追蹤方向，最後 0.2s 鎖定後衝鋒
             if (d > 300) { e.x += Math.cos(a) * spd * dt; e.y += Math.sin(a) * spd * dt; }
-            else if (e.castCd <= 0) startCast(e, { shape: "rect", length: 340, width: 60, dur: 1.1, lockBefore: 0.2, track: true, ang: a, dmg: e.dmg * 1.4, cd: U.rand(1.8, 2.6),
+            else if (e.castCd <= 0) startCast(e, { shape: "rect", length: 340, width: 60, dur: 1.1, lockBefore: 0.2, track: true, ang: a, dmg: 0, cd: U.rand(1.8, 2.6),
               onFire: (en) => { const ca = en.lastCastAng, len = 340, sp = 760; en.dashT = len / sp; en.dvx = Math.cos(ca) * sp; en.dvy = Math.sin(ca) * sp; G.shake(5, .15); } });
             break;
           }
@@ -621,16 +634,19 @@
         c.fired = true;
         if (c.mode === "wave") { w.waves.push({ ox: c.ox, oy: c.oy, ang: c.ang || 0, width: c.width || 60, thickness: 36, speed: 560, traveled: 0, maxLen: c.length || 400, dmg: c.dmg, color: "#ffcf66", hit: false }); }
         else if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null, areaElem);
-        // AOE 命中特效（圓/扇/矩形皆有）
+        // AOE 命中特效：整個範圍亮起 + 圓形附加擴散環
         const col = areaElem === "fire" ? "#ff7a3a" : areaElem === "frost" ? "#7fd0ff" : areaElem === "lightning" ? "#cfa0ff" : "#ff6644";
-        if (c.shape === "circle") { w.particles.push({ ring: true, x: c.ox, y: c.oy, r1: c.radius, life: 0.35, maxLife: 0.35, color: col, lw: 5 }); G.burst(c.ox, c.oy, col, 16); }
-        else if (c.shape === "sector") { w.particles.push({ ring: true, x: c.ox, y: c.oy, r1: c.radius, life: 0.3, maxLife: 0.3, color: col, lw: 4 }); G.burst(c.ox, c.oy, col, 12); }
-        else { const mx = c.ox + Math.cos(c.ang) * (c.centered ? 0 : c.length * 0.5), my = c.oy + Math.sin(c.ang) * (c.centered ? 0 : c.length * 0.5); G.burst(c.ox, c.oy, col, 10); G.burst(mx, my, col, 12); }
+        addFlash(c, col);
+        if (c.shape === "circle") w.particles.push({ ring: true, x: c.ox, y: c.oy, r1: c.radius, life: 0.35, maxLife: 0.35, color: col, lw: 5 });
+        G.burst(c.ox, c.oy, col, 12);
         G.shake(c.big ? 7 : 3, c.big ? .25 : .1);
         if (c.onFire) c.onFire(c);
       }
       if (c.t >= c.dur + 0.12) w.casts.splice(i, 1);
     }
+
+    // AOE 全範圍命中閃光
+    for (let i = w.flashes.length - 1; i >= 0; i--) { w.flashes[i].t += dt; if (w.flashes[i].t >= w.flashes[i].life) w.flashes.splice(i, 1); }
 
     // 待生成敵人（紅色預警 → 1 秒後出現）
     for (let i = w.spawns.length - 1; i >= 0; i--) {
@@ -675,12 +691,22 @@
 
     // 拾取地面道具（拾取範圍內自動吸取）
     const pr = p.pickRange || 60;
+    let doVacuum = false;
     for (let i = w.grounds.length - 1; i >= 0; i--) {
       const g = w.grounds[i]; g.age += dt; g.bob = Math.sin(g.age * 4) * 3;
       const gd = U.dist(g.x, g.y, p.x, p.y);
-      if (gd < p.r + 16) { G.addToBag(g.item); w.grounds.splice(i, 1); continue; }
+      if (gd < p.r + 16) {
+        if (g.special === "magnet") { doVacuum = true; if (G.sfx) G.sfx("pickup"); G.toast("🧲 磁鐵！全圖吸取"); }
+        else G.addToBag(g.item);
+        w.grounds.splice(i, 1); continue;
+      }
       if (gd < pr) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = Math.min(440, 130 + (pr - gd) * 3); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
       else if (g.age > 60) w.grounds.splice(i, 1);
+    }
+    if (doVacuum) {
+      for (const o of w.orbs) G.gainXp(o.xp); w.orbs.length = 0;
+      let gg = 0; for (const c of w.coins) gg += c.gold; w.coins.length = 0; if (gg) { G.save.gold += gg; document.getElementById("coins").textContent = "🪙 " + G.save.gold; }
+      for (let i = w.grounds.length - 1; i >= 0; i--) { const g = w.grounds[i]; if (g.special) continue; G.addToBag(g.item); w.grounds.splice(i, 1); }
     }
 
     // 經驗球（噴出後可被拾取範圍吸取，碰到才入帳）
@@ -839,33 +865,26 @@
     // 地面道具
     for (const g of w.grounds) {
       const x = g.x - cx, y = g.y - cy + g.bob;
-      const r = G.RARITY[g.item.rarity];
-      ctx.fillStyle = r.color; ctx.globalAlpha = .25;
-      ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      ctx.font = "20px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(g.item.ic, x, y);
-      ctx.textBaseline = "alphabetic";
-    }
-
-    // 經驗球（珍奶🧋／小籠包🥟，較好辨識）
-    for (const o of w.orbs) {
-      const x = o.x - cx, y = o.y - cy + Math.sin(o.age * 6) * 2;
-      ctx.globalAlpha = .3; ctx.fillStyle = "#7af5d0";
-      ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      ctx.font = "17px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(o.ic || "🧋", x, y);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      if (g.special === "magnet") { ctx.font = "22px system-ui"; ctx.fillText("🧲", x, g.y - cy + Math.sin(g.age * 5) * 3); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left"; continue; }
+      const r = G.RARITY[g.item.rarity], order = G.RARITY_ORDER.indexOf(g.item.rarity);
+      // 品質光束（依稀有度顏色，越高越明顯）
+      const bh = 42 + order * 16, grd = ctx.createLinearGradient(0, y - bh, 0, y);
+      grd.addColorStop(0, "rgba(0,0,0,0)"); grd.addColorStop(1, r.color);
+      ctx.globalAlpha = .35 + order * .15; ctx.fillStyle = grd; ctx.fillRect(x - 5, y - bh, 10, bh); ctx.globalAlpha = 1;
+      // 裝備底部圓框（僅裝備有）
+      ctx.fillStyle = r.color; ctx.globalAlpha = .25; ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.font = "20px system-ui"; ctx.fillText(g.item.ic, x, y);
       ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
 
-    // 金幣
-    for (const o of w.coins) {
-      const x = o.x - cx, y = o.y - cy + Math.sin(o.age * 7) * 2;
-      ctx.globalAlpha = .3; ctx.fillStyle = "#ffd24a";
-      ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      ctx.font = "15px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("🪙", x, y);
-      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-    }
+    // 經驗球（珍奶🧋／小籠包🥟）與金幣🪙：無圓框，純圖示
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "18px system-ui";
+    for (const o of w.orbs) ctx.fillText(o.ic || "🧋", o.x - cx, o.y - cy + Math.sin(o.age * 6) * 2);
+    ctx.font = "16px system-ui";
+    for (const o of w.coins) ctx.fillText("🪙", o.x - cx, o.y - cy + Math.sin(o.age * 7) * 2);
+    ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
 
     // 粒子（線：閃電）
     for (const pt of w.particles) {
@@ -903,6 +922,7 @@
     // 攻擊範圍讀條（敵人讀條 + Boss 大招自由讀條）
     for (const e of w.enemies) { if (e.cast) drawTelegraph(e.cast, cx, cy); }
     for (const c of w.casts) drawTelegraph(c, cx, cy);
+    for (const f of w.flashes) drawFlash(f, cx, cy);
 
     // 敵人
     for (const e of w.enemies) {

@@ -316,14 +316,14 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.extraPortals = []; w.summonTimer = 1;
+    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.flashes = []; w.extraPortals = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
@@ -562,6 +562,8 @@
   G.rollLoot = function (e) {
     const w = G.world, area = w.area;
     const ilvl = (area.level || 1) + randInt(0, 2);
+    // 機率掉落磁鐵（全圖吸取）
+    if (chance(e.boss ? 0.5 : 0.025)) dropSpecial(e.x + rand(-20, 20), e.y + rand(-20, 20), "magnet");
     if (e.boss) {
       const n = randInt(2, 3);
       for (let k = 0; k < n; k++) {
@@ -578,7 +580,11 @@
   function dropGround(x, y, item) {
     G.world.grounds.push({ x, y, item, bob: 0, age: 0 });
   }
+  function dropSpecial(x, y, special) {
+    G.world.grounds.push({ x, y, special, bob: 0, age: 0 });
+  }
   G.dropGround = dropGround;
+  G.dropSpecial = dropSpecial;
 
   // ================= 震動 =================
   G.shake = function (mag, t) { G.world.shakeMag = Math.max(G.world.shakeMag || 0, mag); G.world.shakeT = Math.max(G.world.shakeT || 0, t); };

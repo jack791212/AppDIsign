@@ -160,5 +160,6 @@ G.TALENTS = {
     { id:'s3', name:'吸取',   desc:'吸血（特效）', max:3, proc:'lifesteal', per:2 },
     { id:'s4', name:'恢復',   desc:'每秒回血（特效）', max:3, proc:'regen', per:1 },
     { id:'s5', name:'疾行',   desc:'移動速度',   max:4, stat:'movePct',   per:4 },
+    { id:'s6', name:'貪婪',   desc:'拾取範圍',   max:3, stat:'pickRange', per:25 },
   ]},
 };
