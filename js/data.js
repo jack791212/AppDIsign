@@ -18,6 +18,7 @@ G.AFFIXES = {
   armor:   { id:'armor',   name:'護甲',     kind:'stat', stat:'armorFlat',  slots:['armor','helmet'],         roll:[3,10],  fmt:v=>`+${v} 護甲（減傷）` },
   summon:  { id:'summon',  name:'召喚強化', kind:'stat', stat:'minionPct',  slots:['weapon','ring','helmet'], roll:[10,28], fmt:v=>`+${v}% 召喚物傷害` },
   range:   { id:'range',   name:'攻擊範圍', kind:'stat', stat:'rangePct',   slots:['weapon','armor'],         roll:[8,20],  fmt:v=>`+${v}% 攻擊範圍（近戰受益大）` },
+  pickup:  { id:'pickup',  name:'拾取範圍', kind:'stat', stat:'pickRange',  slots:['helmet','ring','armor'],  roll:[25,70], fmt:v=>`+${v} 拾取範圍（自動吸取掉落/經驗球）` },
 
   // --- 特效詞條 PROC（玩法核心，可疊加） ---
   chain:    { id:'chain',    name:'連鎖閃電', kind:'proc', slots:['weapon','ring'],  roll:[20,45], fmt:v=>`命中有 ${v}% 機率閃電跳至附近敵人` },

@@ -620,11 +620,24 @@
       }
     }
 
-    // 拾取地面道具
+    // 拾取地面道具（拾取範圍內自動吸取）
+    const pr = p.pickRange || 60;
     for (let i = w.grounds.length - 1; i >= 0; i--) {
       const g = w.grounds[i]; g.age += dt; g.bob = Math.sin(g.age * 4) * 3;
-      if (U.dist(g.x, g.y, p.x, p.y) < p.r + 22) { G.addToBag(g.item); w.grounds.splice(i, 1); }
+      const gd = U.dist(g.x, g.y, p.x, p.y);
+      if (gd < p.r + 16) { G.addToBag(g.item); w.grounds.splice(i, 1); continue; }
+      if (gd < pr) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = Math.min(440, 130 + (pr - gd) * 3); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
       else if (g.age > 60) w.grounds.splice(i, 1);
+    }
+
+    // 經驗球（噴出後可被拾取範圍吸取，碰到才入帳）
+    for (let i = w.orbs.length - 1; i >= 0; i--) {
+      const o = w.orbs[i]; o.age += dt;
+      o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
+      const od = U.dist(o.x, o.y, p.x, p.y);
+      if (od < p.r + 14) { G.gainXp(o.xp); if (G.sfx) G.sfx("pickup"); w.orbs.splice(i, 1); continue; }
+      if (od < pr) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      else if (o.age > 45) w.orbs.splice(i, 1);
     }
 
     // 傳送門偵測
@@ -769,6 +782,14 @@
       ctx.font = "20px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(g.item.ic, x, y);
       ctx.textBaseline = "alphabetic";
+    }
+
+    // 經驗球
+    for (const o of w.orbs) {
+      const x = o.x - cx, y = o.y - cy;
+      ctx.fillStyle = "#7af5d0"; ctx.shadowColor = "#7af5d0"; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = "#dffff5"; ctx.beginPath(); ctx.arc(x - 1.5, y - 1.5, 1.6, 0, Math.PI * 2); ctx.fill();
     }
 
     // 粒子（線：閃電）
@@ -1048,16 +1069,22 @@
   }
 
   function wire() {
-    document.getElementById("bagBtn").onclick = G.openBag;
-    document.getElementById("talBtn").onclick = G.openTalents;
+    // 用 touchstart 綁定，讓移動中也能用第二指同時按（多點觸控）
+    function bindTap(id, fn) {
+      const el = document.getElementById(id); if (!el) return;
+      el.addEventListener("touchstart", (e) => { e.preventDefault(); e.stopPropagation(); el._t = performance.now(); fn(); }, { passive: false });
+      el.addEventListener("click", () => { if (el._t && performance.now() - el._t < 600) return; fn(); });
+    }
+    bindTap("bagBtn", G.openBag);
+    bindTap("talBtn", G.openTalents);
+    bindTap("shopBtn", G.openShop);
+    bindTap("recallBtn", startRecall);
+    bindTap("dashBtn", triggerDash);
+    bindTap("ultBtn", triggerUlt);
+    bindTap("muteBtn", () => { const m = G.toggleMute ? G.toggleMute() : false; document.getElementById("muteBtn").textContent = m ? "🔇" : "🔊"; });
     document.getElementById("bagClose").onclick = G.closeBag;
     document.getElementById("talClose").onclick = G.closeTalents;
-    document.getElementById("shopBtn").onclick = G.openShop;
     document.getElementById("shopClose").onclick = G.closeShop;
-    document.getElementById("recallBtn").onclick = startRecall;
-    document.getElementById("dashBtn").onclick = triggerDash;
-    document.getElementById("ultBtn").onclick = triggerUlt;
-    document.getElementById("muteBtn").onclick = () => { const m = G.toggleMute ? G.toggleMute() : false; document.getElementById("muteBtn").textContent = m ? "🔇" : "🔊"; };
     document.getElementById("startBtn").onclick = beginGame;
     document.getElementById("respawnBtn").onclick = respawn;
     const ct = document.getElementById("ctrlToggle");

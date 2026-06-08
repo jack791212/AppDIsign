@@ -42,7 +42,7 @@
     death() { if (!thr("death", 50)) return; noise(0.14, 0.12, 900); tone(200, 0.12, "square", 0.08, 90); },
     boom() { noise(0.25, 0.18, 700); tone(110, 0.3, "sawtooth", 0.14, 45); },
     level() { tone(520, 0.12, "square", 0.12); setTimeout(() => tone(784, 0.16, "square", 0.12), 100); },
-    pickup() { tone(880, 0.06, "triangle", 0.09, 1180); },
+    pickup() { if (!thr("pickup", 55)) return; tone(880, 0.06, "triangle", 0.09, 1180); },
     dash() { tone(440, 0.12, "sawtooth", 0.1, 920); },
     ult() { tone(130, 0.35, "sawtooth", 0.2, 50); noise(0.3, 0.16, 1400); },
     bossWarn() { tone(150, 0.22, "square", 0.16, 200); },

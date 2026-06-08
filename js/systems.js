@@ -139,7 +139,7 @@
     let maxHp = 100 + (lv - 1) * 12;
     let dmg = 10 + (lv - 1) * 2.2;
     let atkSpdPct = 0, dmgPct = 0, critPct = 5, critDmgPct = 50, movePct = 0;
-    let projectiles = 1, pierce = 0, armorFlat = 0, hpFlat = 0, minionPct = 0, rangePct = 0;
+    let projectiles = 1, pierce = 0, armorFlat = 0, hpFlat = 0, minionPct = 0, rangePct = 0, pickRange = 0;
     const procs = { chain: 0, critboom: 0, lifesteal: 0, frost: 0, burn: 0, thorns: 0, regen: 0, storm: 0, killHeal: 0 };
 
     function addStat(stat, v) {
@@ -155,6 +155,7 @@
         case "armorFlat": armorFlat += v; break;
         case "minionPct": minionPct += v; break;
         case "rangePct": rangePct += v; break;
+        case "pickRange": pickRange += v; break;
       }
     }
 
@@ -213,6 +214,7 @@
     p.armor = armorFlat;
     p.minionPct = minionPct;
     p.rangePct = rangePct;
+    p.pickRange = 60 + pickRange;
     p.procs = procs;
     p.bulletSpeed = 560;
     if (p.hp === undefined || p.hp > p.maxHp) p.hp = p.maxHp;
@@ -230,6 +232,24 @@
 
   // ================= 等級 / 經驗 =================
   G.xpForLevel = (lv) => Math.floor(13 * Math.pow(lv, 1.42)) + 16;
+
+  // 經驗球數量：依玩家與怪物等級差，模擬越級/打爛怪
+  G.xpOrbCount = function (enemyLvl, playerLvl) {
+    const diff = (enemyLvl || 1) - playerLvl;
+    if (diff <= -5) return 1;   // 打爛怪（怪太低）
+    if (diff >= 5) return 10;   // 越級打怪（怪太高）
+    return 3 + Math.floor(Math.random() * 3); // 正常範圍 3~5
+  };
+  // 擊殺後把經驗值拆成數顆經驗球噴在地上，需拾取才入帳
+  G.spawnXpOrbs = function (e) {
+    const w = G.world;
+    const n = G.xpOrbCount(e.lvl, G.save.level);
+    const each = Math.max(1, Math.round(e.xp / n));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = rand(70, 170);
+      w.orbs.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, xp: each, age: 0 });
+    }
+  };
   G.gainXp = function (n) {
     const s = G.save;
     s.xp += n;
@@ -251,14 +271,14 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.extraPortals = []; w.summonTimer = 1;
+    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.extraPortals = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
@@ -324,7 +344,7 @@
     const t = G.ENEMIES[typeId]; if (!t) return;
     const lvScale = 1 + area.level * 0.18;
     w.enemies.push({
-      typeId, name: t.name, x, y, r: t.r, color: t.color,
+      typeId, name: t.name, x, y, r: t.r, color: t.color, lvl: area.level,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
@@ -342,7 +362,7 @@
     const lvScale = 1 + area.level * 0.1;
     const bx = (px != null) ? px : area.bossAt.x, by = (py != null) ? py : area.bossAt.y;
     const b = {
-      typeId: area.boss, name: t.name, x: bx, y: by, r: t.r, color: t.color,
+      typeId: area.boss, name: t.name, x: bx, y: by, r: t.r, color: t.color, lvl: area.level,
       hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
       dmg: t.dmg, speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
       behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, boss: true,
@@ -444,7 +464,7 @@
     G.shake(e.boss ? 12 : 4, e.boss ? .4 : .12);
     if (G.sfx) G.sfx(e.boss ? "boom" : "death");
     G.save.gold += e.gold;
-    G.gainXp(e.xp);
+    G.spawnXpOrbs(e); // 經驗改為經驗球，需拾取
     // 擊殺回血（傳奇）
     if (G.player.procs.killHeal > 0) G.healPlayer(G.player.maxHp * G.player.procs.killHeal / 100);
     // 掉落
