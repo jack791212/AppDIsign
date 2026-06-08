@@ -18,6 +18,7 @@ html, body {
 #topbar { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 14px; }
 #topbar .pill { background: rgba(0,0,0,.45); padding: 4px 11px; border-radius: 20px; }
 #topbar #areaName { color: #ffd166; }
+#hpwrap { display: none; } /* 血量改顯示於角色下方、經驗改顯示於控制區上緣 */
 .barbg { width: 100%; background: rgba(0,0,0,.5); border-radius: 7px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); }
 #hpbar-bg { height: 13px; } #hpbar { height: 100%; width: 100%; background: linear-gradient(90deg,#ff4d6d,#ff8fa3); transition: width .12s; }
 #xpbar-bg { height: 5px; margin-top: 3px; } #xpbar { height: 100%; width: 0%; background: linear-gradient(90deg,#3ad0ff,#7af5d0); transition: width .12s; }

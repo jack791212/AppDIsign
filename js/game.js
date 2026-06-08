@@ -91,6 +91,11 @@
     if (ultCd > 0) { ub.classList.add("cooling"); document.getElementById("ultCd").textContent = Math.ceil(ultCd); } else ub.classList.remove("cooling");
   }
 
+  // 連續擊殺
+  let combo = 0, comboTimer = 0, comboPulse = 0;
+  const COMBO_TIME = 3;
+  G.onKill = function () { combo++; comboTimer = COMBO_TIME; comboPulse = 1; };
+
   // 一鍵回城（受傷會中斷）
   let recalling = false, recallT = 0, recallPrevHp = 0;
   function startRecall() {
@@ -111,32 +116,40 @@
   }
 
   const joy = { active: false, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0, id: null };
-  let npcBtnRect = null; // NPC 頭上按鈕（畫布座標）
-  function hitNpcBtn(lx, ly) { return npcBtnRect && lx >= npcBtnRect.x && lx <= npcBtnRect.x + npcBtnRect.w && ly >= npcBtnRect.y && ly <= npcBtnRect.y + npcBtnRect.h; }
-  function moveZoneTop() { return H * 0.8; } // 只有畫面下方 20% 是移動控制區
+  let npcBtns = []; // [{x,y,w,h,action}] NPC 頭上按鈕（畫布座標）
+  function tryNpcTap(lx, ly) {
+    for (const b of npcBtns) if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
+      if (b.action === "blacksmith") G.openBlacksmith(); else if (b.action === "goddess") G.openGoddess();
+      return true;
+    }
+    return false;
+  }
+  function moveZoneTop() { return H * 0.85; } // 下方 15% 為固定控制區
+  function joyBaseY() { const z = moveZoneTop(); return z + (H - z) / 2; }
+  function joyMax() { const z = moveZoneTop(); return Math.min(52, (H - z) / 2 - 6); }
   function toLocalX(x) { return x - (window.innerWidth - W) / 2; } // 桌機畫面置中時換算為畫布座標
   function pStart(x, y, id) {
     if (G.audioResume) G.audioResume();
     if (isPaused() || controlMode !== "touch") return;
-    if (y < moveZoneTop()) return; // 點擊中間/上方不啟動移動，避免擋住角色
-    x = toLocalX(x);
-    joy.active = true; joy.id = id; joy.ox = x; joy.oy = y; joy.dx = 0; joy.dy = 0; joy.mag = 0;
+    if (y < moveZoneTop()) return; // 只有下方控制區能啟動移動
+    joy.active = true; joy.id = id; joy.ox = W / 2; joy.oy = joyBaseY(); // 固定底座
+    pMove(x, y);
   }
   function pMove(x, y) {
-    x = toLocalX(x);
     if (!joy.active) return;
-    let dx = x - joy.ox, dy = y - joy.oy; const max = 70; const m = Math.hypot(dx, dy);
-    if (m > max) { dx = dx / m * max; dy = dy / m * max; joy.ox = x - dx; joy.oy = y - dy; }
+    x = toLocalX(x);
+    let dx = x - joy.ox, dy = y - joy.oy; const max = joyMax(), m = Math.hypot(dx, dy);
+    if (m > max) { dx = dx / m * max; dy = dy / m * max; }
     joy.dx = dx; joy.dy = dy; joy.mag = Math.min(m, max) / max;
   }
   function pEnd() { joy.active = false; joy.mag = 0; joy.dx = 0; joy.dy = 0; }
 
-  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); const t = e.changedTouches[0]; if (!isPaused() && hitNpcBtn(toLocalX(t.clientX), t.clientY)) { G.openShop(); return; } pStart(t.clientX, t.clientY, t.identifier); }, { passive: false });
+  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); const t = e.changedTouches[0]; if (!isPaused() && tryNpcTap(toLocalX(t.clientX), t.clientY)) return; pStart(t.clientX, t.clientY, t.identifier); }, { passive: false });
   canvas.addEventListener("touchmove", (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joy.id) pMove(t.clientX, t.clientY); }, { passive: false });
   canvas.addEventListener("touchend", (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joy.id) pEnd(); }, { passive: false });
   canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); pEnd(); }, { passive: false });
   let mouseDown = false;
-  canvas.addEventListener("mousedown", (e) => { if (!isPaused() && hitNpcBtn(toLocalX(e.clientX), e.clientY)) { G.openShop(); return; } mouseDown = true; pStart(e.clientX, e.clientY, "m"); });
+  canvas.addEventListener("mousedown", (e) => { if (!isPaused() && tryNpcTap(toLocalX(e.clientX), e.clientY)) return; mouseDown = true; pStart(e.clientX, e.clientY, "m"); });
   window.addEventListener("mousemove", (e) => { if (mouseDown) pMove(e.clientX, e.clientY); });
   window.addEventListener("mouseup", () => { mouseDown = false; pEnd(); });
 
@@ -365,6 +378,10 @@
     if (dashCd > 0) dashCd -= dt;
     if (ultCd > 0) ultCd -= dt;
     updateSkillUI();
+
+    // 連殺倒數
+    if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
+    if (comboPulse > 0) comboPulse -= dt * 3;
 
     // 玩家狀態：燃燒(火)、減速(冰)、麻痺(雷=移動會頓一下)
     if (p.burnT > 0) { p.burnT -= dt; p.burnAcc += p.burnDps * dt; if (p.burnAcc >= 1) { const d = Math.floor(p.burnAcc); p.burnAcc -= d; p.hp -= d; if (p.hp <= 0) { p.hp = 0; G.onPlayerDeath(); } } }
@@ -676,6 +693,16 @@
       else if (o.age > 45) w.orbs.splice(i, 1);
     }
 
+    // 金幣（地上硬幣，拾取入帳）
+    for (let i = w.coins.length - 1; i >= 0; i--) {
+      const o = w.coins[i]; o.age += dt;
+      o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
+      const od = U.dist(o.x, o.y, p.x, p.y);
+      if (od < p.r + 14) { G.save.gold += o.gold; document.getElementById("coins").textContent = "🪙 " + G.save.gold; if (G.sfx) G.sfx("pickup"); w.coins.splice(i, 1); continue; }
+      if (od < pr) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      else if (o.age > 45) w.coins.splice(i, 1);
+    }
+
     // 傳送門偵測
     updatePortalPrompt();
 
@@ -759,10 +786,10 @@
       ctx.restore();
     }
 
-    // 城鎮 NPC（鐵匠）：靠近頭上出現按鈕
-    npcBtnRect = null;
-    if (area.npc) {
-      const npc = area.npc, x = npc.x - cx, y = npc.y - cy;
+    // 城鎮 NPC：靠近頭上出現按鈕
+    npcBtns = [];
+    if (area.npcs) for (const npc of area.npcs) {
+      const x = npc.x - cx, y = npc.y - cy;
       ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(x, y + 16, 16, 6, 0, 0, Math.PI * 2); ctx.fill();
       ctx.font = "32px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(npc.ic || "🧙", x, y);
@@ -773,9 +800,9 @@
         ctx.fillStyle = "#7c4dff"; ctx.fillRect(bx, by, bw, bh);
         ctx.strokeStyle = "#b89cff"; ctx.lineWidth = 2; ctx.strokeRect(bx, by, bw, bh);
         ctx.fillStyle = "#fff"; ctx.font = "700 14px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("💬 交談", x, by + bh / 2);
+        ctx.fillText(npc.label || "💬 交談", x, by + bh / 2);
         ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-        npcBtnRect = { x: bx, y: by, w: bw, h: bh };
+        npcBtns.push({ x: bx, y: by, w: bw, h: bh, action: npc.action });
       }
     }
 
@@ -827,6 +854,16 @@
       ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
       ctx.font = "17px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(o.ic || "🧋", x, y);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    }
+
+    // 金幣
+    for (const o of w.coins) {
+      const x = o.x - cx, y = o.y - cy + Math.sin(o.age * 7) * 2;
+      ctx.globalAlpha = .3; ctx.fillStyle = "#ffd24a";
+      ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.font = "15px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("🪙", x, y);
       ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
 
@@ -982,6 +1019,11 @@
     else { ctx.strokeStyle = "#caa15a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.r + 5, 0, 10, -1.4, 1.4); ctx.stroke(); ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.r + 5 + Math.cos(-1.4) * 10, Math.sin(-1.4) * 10); ctx.lineTo(p.r + 5 + Math.cos(1.4) * 10, Math.sin(1.4) * 10); ctx.stroke(); }
     ctx.restore();
 
+    // 玩家血條（角色下方）
+    { const bw = p.r * 2.6, bx = px - bw / 2, by = py + p.r + 7;
+      ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx, by, bw, 5);
+      ctx.fillStyle = "#ff4d6d"; ctx.fillRect(bx, by, bw * U.clamp(p.hp / p.maxHp, 0, 1), 5); }
+
     // 圓形粒子 / 擴散環（AOE 特效）
     for (const pt of w.particles) {
       if (pt.line) continue;
@@ -1014,28 +1056,40 @@
     // 小地圖
     drawMinimap(area);
 
-    // 移動控制區 + 搖桿（僅觸控模式顯示）
+    // 經驗條（操作區與顯示區之間的橫條）
+    {
+      const xb = controlMode === "touch" ? moveZoneTop() : H;
+      const yb = xb - 6;
+      ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(0, yb, W, 6);
+      ctx.fillStyle = "#3ad0ff"; ctx.fillRect(0, yb, W * U.clamp(G.save.xp / G.xpForLevel(G.save.level), 0, 1), 6);
+    }
+
+    // 連續擊殺顯示（更新時震動，擊殺越多震動越強）
+    if (combo >= 2) {
+      const amp = U.clamp(combo * 0.3, 0, 6) + (comboPulse > 0 ? comboPulse * 5 : 0);
+      const ox = U.rand(-amp, amp), oy = U.rand(-amp, amp);
+      ctx.save(); ctx.textAlign = "center";
+      const sz = 22 + U.clamp(combo, 0, 30) * 0.6 + (comboPulse > 0 ? comboPulse * 6 : 0);
+      ctx.font = "900 " + sz + "px system-ui";
+      ctx.fillStyle = combo >= 15 ? "#ff5470" : combo >= 8 ? "#ffae5e" : "#ffd166";
+      ctx.fillText("🔥 連殺 x" + combo, W / 2 + ox, 132 + oy);
+      // 倒數條
+      const bw = 120, bx = W / 2 - bw / 2;
+      ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(bx, 140, bw, 4);
+      ctx.fillStyle = "#ffd166"; ctx.fillRect(bx, 140, bw * U.clamp(comboTimer / COMBO_TIME, 0, 1), 4);
+      ctx.restore(); ctx.textAlign = "left";
+    }
+
+    // 移動控制區（觸控）：下方 15% 實心、固定搖桿
     if (controlMode === "touch") {
-      const zTop = moveZoneTop();
-      const bandH = H - zTop;
-      if (joy.active) {
-        ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
-        ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 48, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = .75; ctx.beginPath(); ctx.arc(joy.ox + joy.dx, joy.oy + joy.dy, 26, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
-      } else {
-        const hx = W / 2, hy = zTop + bandH / 2;
-        const rr = U.clamp(bandH / 2 - 8, 28, 46);
-        ctx.globalAlpha = .2; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(hx, hy, rr, 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = .3; ctx.fillStyle = "#fff";
-        ctx.beginPath(); ctx.arc(hx, hy, rr * 0.52, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-    } else {
-      // 鍵盤模式提示
-      ctx.globalAlpha = .35; ctx.fillStyle = "#fff"; ctx.font = "600 13px system-ui"; ctx.textAlign = "center";
-      ctx.fillText("WASD / 方向鍵 移動", W / 2, H - 16); ctx.textAlign = "left"; ctx.globalAlpha = 1;
+      const zTop = moveZoneTop(), bandH = H - zTop, bx = W / 2, by = joyBaseY(), rr = joyMax();
+      ctx.fillStyle = "#0a0812"; ctx.fillRect(0, zTop, W, bandH); // 實心，不顯示任何東西
+      ctx.globalAlpha = .2; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(bx, by, rr, 0, Math.PI * 2); ctx.stroke();
+      const kx = bx + (joy.active ? joy.dx : 0), ky = by + (joy.active ? joy.dy : 0);
+      ctx.globalAlpha = joy.active ? .8 : .4; ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(kx, ky, rr * 0.55, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
     // Boss 血條（螢幕頂部，避開右上小地圖）

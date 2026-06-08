@@ -246,6 +246,23 @@
     });
   };
 
+  // 女神對話入口（恢復生命 + 鼓勵）
+  G.openGoddess = function () {
+    const lines = [
+      "勇敢的冒險者，願星光照亮你的路。",
+      "每一次倒下，都是為了更強地站起。",
+      "來吧，讓我撫平你的傷口。",
+    ];
+    G.startDialogue({
+      name: "女神", ic: "🧚",
+      lines,
+      options: [
+        { label: "🙏 接受祝福（回復生命）", action: () => { G.player.hp = G.player.maxHp; if (G.sfx) G.sfx("level"); G.toast("女神的祝福：生命已完全回復！"); } },
+        { label: "離開", action: () => {} },
+      ],
+    });
+  };
+
   // ---------- 城鎮商店：強化 ----------
   function enhRow(it, slotLabel) {
     const r = G.RARITY[it.rarity];

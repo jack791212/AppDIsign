@@ -275,6 +275,16 @@
     if (diff >= 5) return 10;   // 越級打怪（怪太高）
     return 3 + Math.floor(Math.random() * 3); // 正常範圍 3~5
   };
+  // 擊殺後把金幣拆成數枚硬幣噴在地上，需拾取才入帳
+  G.spawnCoins = function (e) {
+    const w = G.world;
+    const n = clamp(1 + Math.floor(e.gold / 6), 1, 6);
+    const each = Math.max(1, Math.round(e.gold / n));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = rand(60, 150);
+      w.coins.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, gold: each, age: 0 });
+    }
+  };
   // 擊殺後把經驗值拆成數顆經驗球噴在地上，需拾取才入帳
   G.spawnXpOrbs = function (e) {
     const w = G.world;
@@ -306,14 +316,14 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], extraPortals: [], altar: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
-    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.extraPortals = []; w.summonTimer = 1;
+    w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.extraPortals = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0;
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
@@ -508,8 +518,9 @@
     G.burst(e.x, e.y, e.color, e.boss ? 40 : 14);
     G.shake(e.boss ? 12 : 4, e.boss ? .4 : .12);
     if (G.sfx) G.sfx(e.boss ? "boom" : "death");
-    G.save.gold += e.gold;
+    G.spawnCoins(e); // 金幣改為地上硬幣，需拾取
     G.spawnXpOrbs(e); // 經驗改為經驗球，需拾取
+    if (G.onKill) G.onKill(); // 連殺計數
     // 擊殺回血（傳奇）
     if (G.player.procs.killHeal > 0) G.healPlayer(G.player.maxHp * G.player.procs.killHeal / 100);
     // 掉落

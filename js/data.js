@@ -105,7 +105,10 @@ G.BOSSES = {
 G.AREAS = {
   town: {
     name:'城鎮', w:1000, h:1000, bg:'#1d2433', safe:true, level:0,
-    npc:{ x:360, y:760, name:'鐵匠', ic:'🔨' },
+    npcs:[
+      { x:360, y:760, name:'鐵匠', ic:'🔨', label:'💬 交談', action:'blacksmith' },
+      { x:640, y:760, name:'女神', ic:'🧚', label:'🙏 祈禱', action:'goddess' },
+    ],
     portals:[ {to:'forest', x:500, y:230, name:'幽暗森林'} ],
   },
   forest: {
