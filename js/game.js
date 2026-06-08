@@ -827,7 +827,7 @@
         else G.addToBag(g.item);
         w.grounds.splice(i, 1); continue;
       }
-      if (gd < pr || mag) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = U.clamp(130 + (pr - gd) * 3, 150, 480); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
+      if (gd < pr || mag) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = U.clamp(130 + (pr - gd) * 3, 150, 480) * (mag ? 2 : 1); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
       else if (g.age > 60) w.grounds.splice(i, 1);
     }
 
@@ -837,7 +837,7 @@
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
       if (od < p.r + 14) { G.gainXp(o.xp); if (G.sfx) G.sfx("pickup"); w.orbs.splice(i, 1); continue; }
-      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600) * (mag ? 2 : 1); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.orbs.splice(i, 1);
     }
 
@@ -847,7 +847,7 @@
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
       if (od < p.r + 14) { G.save.gold += o.gold; document.getElementById("coins").textContent = "🪙 " + G.save.gold; if (G.sfx) G.sfx("pickup"); w.coins.splice(i, 1); continue; }
-      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600) * (mag ? 2 : 1); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.coins.splice(i, 1);
     }
 
