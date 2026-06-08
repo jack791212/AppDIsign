@@ -20,7 +20,7 @@
     return {
       v: 1, level: 1, xp: 0, gold: 0, talentPts: 0,
       talents: {}, // nodeId -> rank
-      qi: { fire: 0, lightning: 0, ice: 0 }, // 功法各條深度
+      qi: { picks: [] }, // 功法：每排(每5級)三選一，picks[tier]='fire'|'lightning'|'ice'
       equipped: { weapon: null, armor: null, helmet: null, ring: null },
       bag: [], area: "town",
       killedBoss: {},
@@ -29,7 +29,7 @@
   G.loadSave = function () {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (raw) { G.save = JSON.parse(raw); if (!G.save.qi) G.save.qi = { fire: 0, lightning: 0, ice: 0 }; return true; }
+      if (raw) { G.save = JSON.parse(raw); if (!G.save.qi || !Array.isArray(G.save.qi.picks)) G.save.qi = { picks: [] }; return true; }
     } catch (e) {}
     G.save = G.newSave();
     return false;
@@ -227,15 +227,13 @@
         else if (node.proc) procs[node.proc] = (procs[node.proc] || 0) + total;
       }
     }
-    // 功法（火/雷/冰）：依各條深度累加節點
-    const qi = s.qi || { fire: 0, lightning: 0, ice: 0 };
-    for (const col in G.QIGONG) {
-      const depth = qi[col] || 0, nodes = G.QIGONG[col].nodes;
-      for (let t = 0; t < depth && t < nodes.length; t++) {
-        const n = nodes[t];
-        if (n.stat) addStat(n.stat, n.per);
-        else if (n.proc) procs[n.proc] = (procs[n.proc] || 0) + n.per;
-      }
+    // 功法：每排三選一，套用該排所選元素的節點
+    const picks = (s.qi && s.qi.picks) || [];
+    for (let t = 0; t < picks.length; t++) {
+      const col = picks[t]; if (!col || !G.QIGONG[col]) continue;
+      const n = G.QIGONG[col].nodes[t]; if (!n) continue;
+      if (n.stat) addStat(n.stat, n.per);
+      else if (n.proc) procs[n.proc] = (procs[n.proc] || 0) + n.per;
     }
     // Boss 首殺戰利品：永久加成（長期目標）
     const trophies = Object.values(s.killedBoss || {}).filter(Boolean).length;
@@ -517,15 +515,16 @@
     }
   };
 
-  // ===== 功法點數 =====
-  G.qiTotal = function () { return Math.floor(G.save.level / 5); };
-  G.qiSpent = function () { const q = G.save.qi || {}; return (q.fire || 0) + (q.lightning || 0) + (q.ice || 0); };
-  G.qiAvail = function () { return G.qiTotal() - G.qiSpent(); };
-  G.qiAdvance = function (col) {
+  // ===== 功法：每 5 級開放下一排，每排三選一（其餘鎖死）=====
+  G.QI_TIERS = 10;
+  G.qiTotal = function () { return Math.min(G.QI_TIERS, Math.floor(G.save.level / 5)); };
+  G.qiPickRow = function () { return ((G.save.qi && G.save.qi.picks) || []).length; }; // 下一個可選的排
+  G.qiAvail = function () { return G.qiTotal() - G.qiPickRow(); };
+  G.qiPick = function (col) {
     if (!G.QIGONG[col]) return false;
-    if (G.qiAvail() <= 0) { G.toast("沒有可用功法點（每 5 等 +1）"); return false; }
-    if ((G.save.qi[col] || 0) >= G.QIGONG[col].nodes.length) { G.toast("此功法已圓滿"); return false; }
-    G.save.qi[col] = (G.save.qi[col] || 0) + 1;
+    if (G.qiPickRow() >= G.QI_TIERS) { G.toast("功法已圓滿"); return false; }
+    if (G.qiAvail() <= 0) { G.toast("尚無可選功法（每 5 等開放一排）"); return false; }
+    G.save.qi.picks.push(col);
     G.computeStats(); G.persist(); if (G.refreshHud) G.refreshHud();
     return true;
   };

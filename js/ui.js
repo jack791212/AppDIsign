@@ -220,17 +220,24 @@
 
   // ---------- 功法面板 ----------
   function renderQi() {
-    $("qiPts").textContent = "可用功法點：" + G.qiAvail() + "（每 5 等 +1，目前共 " + G.qiTotal() + " 點）";
+    const pickRow = G.qiPickRow(), avail = G.qiAvail();
+    $("qiPts").textContent = avail > 0
+      ? "請選擇第 " + (pickRow + 1) + " 排功法（火／雷／冰 擇一，其餘鎖死）"
+      : "已選 " + pickRow + " 排（每 5 等開放下一排，目前最多 " + G.qiTotal() + " 排）";
     const cols = $("qiCols"); cols.innerHTML = "";
+    const picks = (G.save.qi && G.save.qi.picks) || [];
     for (const cid in G.QIGONG) {
-      const col = G.QIGONG[cid], depth = G.save.qi[cid] || 0;
+      const col = G.QIGONG[cid];
       const c = document.createElement("div"); c.className = "qicol";
       c.innerHTML = `<div class="qihead" style="background:${col.color}33;color:${col.color}">${col.ic} ${col.name}</div>`;
       col.nodes.forEach((n, t) => {
-        const owned = t < depth, next = t === depth;
-        const el = document.createElement("div"); el.className = "qinode " + (owned ? "owned" : next ? "next" : "lock");
-        el.innerHTML = `<div class="qn">${t + 1}. ${n.name}</div><div class="qd">${n.desc}</div>`;
-        if (next) el.onclick = () => { if (G.qiAdvance(cid)) renderQi(); };
+        let state;
+        if (t < pickRow) state = (picks[t] === cid) ? "owned" : "forfeit";
+        else if (t === pickRow && avail > 0) state = "next";
+        else state = "lock";
+        const el = document.createElement("div"); el.className = "qinode " + state;
+        el.innerHTML = `<div class="qn">第${t + 1}排 ${n.name}</div><div class="qd">${n.desc}</div>`;
+        if (state === "next") el.onclick = () => { if (G.qiPick(cid)) renderQi(); };
         c.appendChild(el);
       });
       cols.appendChild(c);
