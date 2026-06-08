@@ -538,11 +538,12 @@
   };
 
   // 玩家受傷（含護甲減傷、荊棘反傷、元素狀態）
-  G.damagePlayer = function (raw, source, elem) {
+  G.damagePlayer = function (raw, source, elem, bossHit) {
     const p = G.player;
     if (p.invuln > 0 || p.hp <= 0) return;
     const reduction = p.armor / (p.armor + 30);
-    const dmg = Math.max(1, Math.round(raw * (1 - reduction)));
+    let dmg = Math.max(1, Math.round(raw * (1 - reduction)));
+    if (bossHit) dmg += Math.round(p.maxHp * 0.10); // Boss 攻擊附帶 10% 最大生命真實傷害（無視護甲）
     p.hp -= dmg; p.invuln = 0.5;
     G.shake(7, .25);
     if (G.sfx) G.sfx("hurt");

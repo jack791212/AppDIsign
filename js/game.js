@@ -256,7 +256,7 @@
     if (!c.fired && c.t >= c.dur) {
       c.fired = true;
       e.lastCastAng = c.ang;
-      if (c.dmg > 0 && castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e, e.elem);
+      if (c.dmg > 0 && castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, e, e.elem, e.boss);
       addFlash(c, elemColor(e.elem)); // 全範圍命中特效
       const cb = c.onFire; e.cast = null; e.castCd = c.cd || 1.6;
       if (cb) cb(e);
@@ -313,12 +313,12 @@
   // ========== Boss 戰鬥：可重用招式建構工具 ==========
   function angTo(e) { return Math.atan2(G.player.y - e.y, G.player.x - e.x); }
   function bossShot(x, y, ang, speed, dmg, opts) {
-    const s = { x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, dmg, life: 4.5, r: 7, color: "#ff5470", turn: 0, accel: 0 };
+    const s = { x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, dmg, life: 4.5, r: 7, color: "#ff5470", turn: 0, accel: 0, boss: true };
     if (opts) Object.assign(s, opts);
     G.world.foeShots.push(s);
   }
   function addEmitter(e, em) { e.emitters.push(Object.assign({ t: 0, acc: 0, n: 0 }, em)); }
-  function addFreeCast(cfg) { G.world.casts.push(Object.assign({ t: 0, fired: false, dmg: 0, arcHalf: 0, radius: 0, length: 0, width: 0, ang: 0, mode: "aoe" }, cfg)); }
+  function addFreeCast(cfg) { G.world.casts.push(Object.assign({ t: 0, fired: false, dmg: 0, arcHalf: 0, radius: 0, length: 0, width: 0, ang: 0, mode: "aoe", boss: true }, cfg)); }
   // 在玩家周圍預警生成一批敵人（召喚波）
   function summonAround(typeId, n, radius) {
     const p = G.player;
@@ -696,7 +696,7 @@
       for (const o of w.obstacles) { const dd = U.dist(e.x, e.y, o.x, o.y), mn = o.r + e.r; if (dd > 0 && dd < mn) { const oa = Math.atan2(e.y - o.y, e.x - o.x); e.x = o.x + Math.cos(oa) * mn; e.y = o.y + Math.sin(oa) * mn; } }
       // 接觸傷害（空中的 Boss 不造成接觸傷害）
       e.touchCd -= dt;
-      if (!e.airborne && d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e, e.elem); e.touchCd = 0.6; }
+      if (!e.airborne && d < e.r + p.r && e.touchCd <= 0) { G.damagePlayer(e.dmg, e, e.elem, e.boss); e.touchCd = 0.6; }
     }
 
     // 召喚物（史萊姆）：追蹤並攻擊最近敵人
@@ -727,7 +727,7 @@
       const out = s.x < -30 || s.x > area.w + 30 || s.y < -30 || s.y > area.h + 30;
       let blocked = false; for (const o of w.obstacles) if (U.dist(s.x, s.y, o.x, o.y) < o.r) { blocked = true; break; }
       if (s.life <= 0 || out || blocked) { if (s.bloom && !out && !blocked) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); continue; }
-      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null, areaElem); if (s.bloom) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); }
+      if (U.dist(s.x, s.y, p.x, p.y) < p.r + s.r) { G.damagePlayer(s.dmg, null, areaElem, s.boss); if (s.bloom) addFreeCast({ shape: "circle", ox: s.x, oy: s.y, radius: s.bloomR || 80, dur: 0.7, dmg: s.bloomDmg || s.dmg }); w.foeShots.splice(i, 1); }
     }
 
     // 移動光波（實體碰撞傷害：碰到才受傷）
@@ -736,7 +736,7 @@
       if (!v.hit) {
         const dx = p.x - v.ox, dy = p.y - v.oy;
         const lx = dx * Math.cos(v.ang) + dy * Math.sin(v.ang), ly = -dx * Math.sin(v.ang) + dy * Math.cos(v.ang);
-        if (Math.abs(lx - v.traveled) < v.thickness / 2 + p.r && Math.abs(ly) < v.width / 2 + p.r) { G.damagePlayer(v.dmg, null, areaElem); v.hit = true; }
+        if (Math.abs(lx - v.traveled) < v.thickness / 2 + p.r && Math.abs(ly) < v.width / 2 + p.r) { G.damagePlayer(v.dmg, null, areaElem, v.boss); v.hit = true; }
       }
       if (v.traveled > v.maxLen) w.waves.splice(i, 1);
     }
@@ -753,8 +753,8 @@
       }
       if (!c.fired && c.t >= c.dur) {
         c.fired = true;
-        if (c.mode === "wave") { w.waves.push({ ox: c.ox, oy: c.oy, ang: c.ang || 0, width: c.width || 60, thickness: 36, speed: 560, traveled: 0, maxLen: c.length || 400, dmg: c.dmg, color: "#ffcf66", hit: false }); }
-        else if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null, areaElem);
+        if (c.mode === "wave") { w.waves.push({ ox: c.ox, oy: c.oy, ang: c.ang || 0, width: c.width || 60, thickness: 36, speed: 560, traveled: 0, maxLen: c.length || 400, dmg: c.dmg, color: "#ffcf66", hit: false, boss: c.boss }); }
+        else if (castContains(c, p.x, p.y, p.r)) G.damagePlayer(c.dmg, null, areaElem, c.boss);
         // AOE 命中特效：整個範圍亮起 + 圓形附加擴散環
         const col = areaElem === "fire" ? "#ff7a3a" : areaElem === "frost" ? "#7fd0ff" : areaElem === "lightning" ? "#cfa0ff" : "#ff6644";
         addFlash(c, col);
