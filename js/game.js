@@ -164,22 +164,28 @@
       w.bullets.push({ x: p.x + Math.cos(a) * p.r, y: p.y + Math.sin(a) * p.r, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: homing ? 2.4 : 1.4, pierce: p.pierce, hits: [], homing: !!homing });
     }
   }
-  // 雙手劍 / 匕首：近戰扇形揮砍
+  // 雙手劍 / 匕首：建立一個持續動畫的近戰攻擊（跟隨角色、碰到才受傷）
   function meleeSwing() {
     const w = G.world, p = G.player, WT = p.weapon;
     const tgt = nearestEnemy(p.x, p.y);
     const baseAng = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) : p.facing;
     p.facing = baseAng;
-    const reach = (WT.reach || 100) * (1 + (p.rangePct || 0) / 100), arcHalf = WT.arcHalf || 1;
-    for (const e of w.enemies.slice()) {
-      if (e.hp <= 0) continue;
-      if (U.dist(p.x, p.y, e.x, e.y) > reach + e.r) continue;
-      let diff = Math.atan2(e.y - p.y, e.x - p.x) - baseAng;
-      while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
-      if (Math.abs(diff) <= arcHalf) G.onPlayerHit(e);
+    const reach = (WT.reach || 100) * (1 + (p.rangePct || 0) / 100);
+    if (p.weaponType === "dagger") {
+      // 匕首：窄而深的刺擊
+      w.swings.push({ type: "dagger", ang: baseAng, reach, width: 12, life: 0.18, maxLife: 0.18, hits: [] });
+    } else {
+      // 雙手劍：從身側揮砍至目標角度
+      const arcHalf = (WT.arcHalf || 1.05);
+      w.swings.push({ type: "sword", ang: baseAng, arcHalf, reach, width: 24, life: 0.26, maxLife: 0.26, hits: [], dir: Math.random() < 0.5 ? 1 : -1 });
     }
-    w.swings.push({ x: p.x, y: p.y, ang: baseAng, reach, arcHalf, life: 0.16 });
     G.shake(3, 0.08);
+  }
+  // 點到線段最短距離（近戰命中判定）
+  function segDist(ax, ay, bx, by, px, py) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0; t = U.clamp(t, 0, 1);
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
   // 法書：召喚史萊姆
   function spawnMinion() {
@@ -414,8 +420,24 @@
       }
     }
 
-    // 揮砍特效計時
-    for (let i = w.swings.length - 1; i >= 0; i--) { w.swings[i].life -= dt; if (w.swings[i].life <= 0) w.swings.splice(i, 1); }
+    // 近戰攻擊：刀刃跟隨角色、依動畫掃過/刺出，碰到敵人才造成傷害
+    for (let i = w.swings.length - 1; i >= 0; i--) {
+      const m = w.swings[i]; m.life -= dt;
+      const prog = U.clamp(1 - m.life / m.maxLife, 0, 1);
+      if (m.type === "dagger") {
+        const e = prog < 0.5 ? prog / 0.5 : 1 - (prog - 0.5) / 0.5; // 刺出再收回
+        m.curAng = m.ang; m.curLen = m.reach * (0.4 + 0.6 * e);
+      } else {
+        m.curAng = m.ang + m.dir * (-m.arcHalf + 2 * m.arcHalf * prog); // 由身側掃到另一側
+        m.curLen = m.reach;
+      }
+      const ex = p.x + Math.cos(m.curAng) * m.curLen, ey = p.y + Math.sin(m.curAng) * m.curLen;
+      for (const en of w.enemies) {
+        if (en.hp <= 0 || en.airborne || m.hits.includes(en)) continue;
+        if (segDist(p.x, p.y, ex, ey, en.x, en.y) < en.r + m.width) { m.hits.push(en); G.onPlayerHit(en); }
+      }
+      if (m.life <= 0) w.swings.splice(i, 1);
+    }
 
     // 玩家子彈
     for (let i = w.bullets.length - 1; i >= 0; i--) {
@@ -869,13 +891,31 @@
       if (m.hp < m.maxHp) { const bw = m.r * 2; ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(x - bw / 2, y - m.r - 6, bw, 3); ctx.fillStyle = "#7af5d0"; ctx.fillRect(x - bw / 2, y - m.r - 6, bw * (m.hp / m.maxHp), 3); }
     }
 
-    // 近戰揮砍特效
-    for (const s of w.swings) {
-      const a = U.clamp(s.life / 0.16, 0, 1);
-      ctx.save(); ctx.translate(s.x - cx, s.y - cy); ctx.rotate(s.ang);
-      ctx.globalAlpha = a * 0.45; ctx.fillStyle = "#fff";
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, s.reach, -s.arcHalf, s.arcHalf); ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1; ctx.restore();
+    // 近戰武器（跟隨角色，依動畫繪製真實刀劍）
+    for (const m of w.swings) {
+      const px = p.x - cx, py = p.y - cy, fade = U.clamp(m.life / m.maxLife, 0, 1);
+      if (m.type === "dagger") {
+        ctx.save(); ctx.translate(px, py); ctx.rotate(m.curAng);
+        ctx.fillStyle = "#9a7b45"; ctx.fillRect(4, -4, 6, 8); // 握把/護手
+        ctx.fillStyle = "#e8eef6"; // 刀刃
+        ctx.beginPath(); ctx.moveTo(10, -2.5); ctx.lineTo(m.curLen, -2); ctx.lineTo(m.curLen + 7, 0); ctx.lineTo(m.curLen, 2); ctx.lineTo(10, 2.5); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = fade * 0.7; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(m.curLen + 7, 0); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.restore();
+      } else {
+        const startAng = m.ang - m.dir * m.arcHalf;
+        ctx.save(); ctx.translate(px, py);
+        // 揮砍殘影扇形
+        ctx.globalAlpha = 0.28 * fade; ctx.fillStyle = "#dfeaff";
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, m.reach, startAng, m.curAng, m.dir < 0); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+        // 劍身
+        ctx.rotate(m.curAng);
+        ctx.fillStyle = "#9a7b45"; ctx.fillRect(2, -7, 8, 14); // 護手
+        ctx.fillStyle = "#eef2f7";
+        ctx.beginPath(); ctx.moveTo(12, -5); ctx.lineTo(m.reach, -7); ctx.lineTo(m.reach + 12, 0); ctx.lineTo(m.reach, 7); ctx.lineTo(12, 5); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(m.reach + 10, 0); ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // 玩家子彈 / 法球
@@ -889,8 +929,12 @@
       } else {
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-        ctx.fillStyle = "#ffe08a"; ctx.fillRect(-9, -2, 18, 4);
-        ctx.fillStyle = "#fff6c8"; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(4, -4); ctx.lineTo(4, 4); ctx.fill();
+        // 箭桿
+        ctx.strokeStyle = "#caa15a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(8, 0); ctx.stroke();
+        // 箭頭
+        ctx.fillStyle = "#e8eef5"; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(7, -4); ctx.lineTo(7, 4); ctx.closePath(); ctx.fill();
+        // 尾羽
+        ctx.fillStyle = "#ff7a7a"; ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-7, -4); ctx.lineTo(-5, 0); ctx.lineTo(-7, 4); ctx.closePath(); ctx.fill();
         ctx.restore();
       }
     }
