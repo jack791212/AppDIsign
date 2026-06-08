@@ -86,27 +86,27 @@ G.RARITY_ORDER = ['common','magic','rare','legend'];
 // ============ 敵人 ENEMY TYPES ============
 // 各區主題怪物（ic=外觀圖示）
 G.ENEMIES = {
-  slime:   { name:'史萊姆', ic:'🟢', r:15, color:'#5fc46b', hp:24,  dmg:12, speed:50,  xp:4,  gold:2,  behavior:'chase' },
-  slimelet:{ name:'小史萊姆',ic:'🫧', r:11, color:'#7fe08a', hp:14,  dmg:9,  speed:70,  xp:3,  gold:1,  behavior:'chase' },
-  wolf:    { name:'野狼',   ic:'🐺', r:16, color:'#9aa0b0', hp:42,  dmg:18, speed:96,  xp:8,  gold:4,  behavior:'charger' },
-  monkey:  { name:'火猴',   ic:'🐒', r:16, color:'#e0683a', hp:60,  dmg:22, speed:82,  xp:11, gold:5,  behavior:'striker' },
-  shrimp:  { name:'蝦兵',   ic:'🦐', r:14, color:'#ff8a6a', hp:55,  dmg:20, speed:72,  xp:10, gold:5,  behavior:'chase' },
-  crab:    { name:'蟹將',   ic:'🦀', r:19, color:'#ff6a4a', hp:100, dmg:28, speed:48,  xp:15, gold:8,  behavior:'striker' },
-  icecry:  { name:'冰晶',   ic:'🔷', r:15, color:'#8fd0ff', hp:78,  dmg:26, speed:55,  xp:14, gold:7,  behavior:'ranged' },
-  bird:    { name:'妖鳥',   ic:'🐦', r:14, color:'#b0a0ff', hp:70,  dmg:26, speed:122, xp:14, gold:7,  behavior:'charger' },
-  rock:    { name:'石頭怪', ic:'🪨', r:22, color:'#9a8a7a', hp:170, dmg:34, speed:42,  xp:21, gold:12, behavior:'chase' },
-  bomber:  { name:'爆裂蟲', ic:'💣', r:15, color:'#ff8a3a', hp:30,  dmg:30, speed:92,  xp:9,  gold:4,  behavior:'bomber' },
+  slime:   { name:'史萊姆', ic:'🟢', r:15, color:'#5fc46b', hp:16,  dmg:16, speed:50,  xp:4,  gold:2,  behavior:'chase' },
+  slimelet:{ name:'小史萊姆',ic:'🫧', r:11, color:'#7fe08a', hp:10,  dmg:12, speed:70,  xp:3,  gold:1,  behavior:'chase' },
+  wolf:    { name:'野狼',   ic:'🐺', r:16, color:'#9aa0b0', hp:30,  dmg:24, speed:96,  xp:8,  gold:4,  behavior:'charger' },
+  monkey:  { name:'火猴',   ic:'🐒', r:16, color:'#e0683a', hp:42,  dmg:30, speed:82,  xp:11, gold:5,  behavior:'striker' },
+  shrimp:  { name:'蝦兵',   ic:'🦐', r:14, color:'#ff8a6a', hp:38,  dmg:26, speed:72,  xp:10, gold:5,  behavior:'chase' },
+  crab:    { name:'蟹將',   ic:'🦀', r:19, color:'#ff6a4a', hp:70,  dmg:36, speed:48,  xp:15, gold:8,  behavior:'striker' },
+  icecry:  { name:'冰晶',   ic:'🔷', r:15, color:'#8fd0ff', hp:54,  dmg:34, speed:55,  xp:14, gold:7,  behavior:'ranged' },
+  bird:    { name:'妖鳥',   ic:'🐦', r:14, color:'#b0a0ff', hp:50,  dmg:34, speed:122, xp:14, gold:7,  behavior:'charger' },
+  rock:    { name:'石頭怪', ic:'🪨', r:22, color:'#9a8a7a', hp:120, dmg:44, speed:42,  xp:21, gold:12, behavior:'chase' },
+  bomber:  { name:'爆裂蟲', ic:'💣', r:15, color:'#ff8a3a', hp:22,  dmg:40, speed:92,  xp:9,  gold:4,  behavior:'bomber' },
 };
 
-// Boss：ic=外觀；attacks=普攻池、ults=三選一大招
+// Boss：ic=外觀；每隻有專屬不重複的 ≥3 普攻 + ≥3 大招；越後面大招越長越複雜
 G.BOSSES = {
-  slimeKing: { name:'史萊姆王', ic:'🟢', r:46, color:'#4fb05f', hp:1200,  dmg:16, speed:52, xp:300,  gold:160,  behavior:'boss', attacks:['ring','aimVolley'],                         ults:['novaRing','bulletRings','meteorRain'] },
-  wolfKing:  { name:'狼王',     ic:'🐺', r:48, color:'#8a90a0', hp:3200,  dmg:24, speed:70, xp:700,  gold:450,  behavior:'boss', attacks:['bigBite','aimVolley','coneBurst'],           ults:['jumpSlam','sectorSweep','crossBeams'] },
-  monkeyKing:{ name:'火猴王',   ic:'🐒', r:48, color:'#d8602e', hp:6000,  dmg:32, speed:72, xp:1500, gold:1000, behavior:'boss', attacks:['coneBurst','aimBurst','bigBite'],            ults:['meteorRain','spiralStorm','jumpCross'] },
-  dragonKing:{ name:'龍王',     ic:'🐉', r:52, color:'#3aa0b0', hp:11000, dmg:40, speed:70, xp:3200, gold:2200, behavior:'boss', attacks:['ring','spiral','aimBurst','bigBite'],        ults:['bulletRings','crossBeams','spiralPlusRing'] },
-  iceQueen:  { name:'冰雪女王', ic:'❄️', r:50, color:'#7fd0ff', hp:18000, dmg:48, speed:66, xp:5500, gold:3600, behavior:'boss', attacks:['aimVolley','wallRect','ring','twinSpiral'],   ults:['fieldSweepH','boxTrap','bulletRings','sectorSweep'] },
-  birdDemon: { name:'巨大鳥妖', ic:'🦅', r:50, color:'#a890ff', hp:30000, dmg:56, speed:88, xp:9000, gold:6000, behavior:'boss', attacks:['coneBurst','aimBurst','homingOrbs'],         ults:['jumpCross','fieldSweepV','spiralPlusRing','meteorRain'] },
-  abyssBeast:{ name:'深淵巨獸', ic:'👹', r:58, color:'#8a3cff', hp:55000, dmg:70, speed:72, xp:18000,gold:12000, behavior:'boss', attacks:['spiral','aimBurst','wallRect','bigBite','homingOrbs'], ults:['crossBeams','spiralPlusRing','jumpCross','fieldSweepV','chargerRush','meteorRain'] },
+  slimeKing: { name:'史萊姆王', ic:'🟢', r:46, color:'#4fb05f', hp:700,   dmg:20, speed:52, xp:300,  gold:160,  behavior:'boss', attacks:['slimeSpit','slimeRing','slimeSplit'],         ults:['slimeNova','slimeRain','slimeFlood'] },
+  wolfKing:  { name:'狼王',     ic:'🐺', r:48, color:'#8a90a0', hp:1800,  dmg:30, speed:70, xp:700,  gold:450,  behavior:'boss', attacks:['wolfBite','wolfHowl','wolfVolley'],          ults:['wolfPounce','wolfTear','wolfPack'] },
+  monkeyKing:{ name:'火猴王',   ic:'🐒', r:48, color:'#d8602e', hp:3600,  dmg:40, speed:72, xp:1500, gold:1000, behavior:'boss', attacks:['apeThrow','apeCone','apeSpin'],              ults:['apeMeteor','apeFlame','apeCross'] },
+  dragonKing:{ name:'龍王',     ic:'🐉', r:52, color:'#3aa0b0', hp:6500,  dmg:52, speed:70, xp:3200, gold:2200, behavior:'boss', attacks:['dragBreath','dragTide','dragVolley'],        ults:['dragTsunami','dragRings','dragSpiral'] },
+  iceQueen:  { name:'冰雪女王', ic:'❄️', r:50, color:'#7fd0ff', hp:10000, dmg:64, speed:66, xp:5500, gold:3600, behavior:'boss', attacks:['iceShard','iceLance','iceHoming'],          ults:['iceBlizzard','iceNova','iceStorm'] },
+  birdDemon: { name:'巨大鳥妖', ic:'🦅', r:50, color:'#a890ff', hp:16000, dmg:78, speed:88, xp:9000, gold:6000, behavior:'boss', attacks:['birdFeather','birdGust','birdHoming'],      ults:['birdDive','birdTornado','birdStorm'] },
+  abyssBeast:{ name:'深淵巨獸', ic:'👹', r:58, color:'#8a3cff', hp:28000, dmg:95, speed:72, xp:18000,gold:12000, behavior:'boss', attacks:['abyssSpiral','abyssBurst','abyssWall','abyssBite'], ults:['abyssCross','abyssChaos','abyssRain','abyssRush'] },
 };
 // ============ 地圖區域 AREAS ============
 // 正方形地圖；safe=城鎮不刷怪；reqLevel=傳送門解鎖等級；elem=該區敵人攻擊元素

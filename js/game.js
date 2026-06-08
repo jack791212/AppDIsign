@@ -96,7 +96,7 @@
 
   // 連續擊殺
   let combo = 0, comboTimer = 0, comboPulse = 0;
-  const COMBO_TIME = 3, CHEST_KILLS = 20, KILLS_FOR_BOSS = 50;
+  const COMBO_TIME = 3, CHEST_KILLS = 20, KILLS_FOR_BOSS = 20;
   G.onKill = function () {
     combo++; comboTimer = COMBO_TIME; comboPulse = 1;
     if (combo >= CHEST_KILLS) { spawnChest(); combo = 0; }
@@ -390,6 +390,71 @@
       addEmitter(e, { dur: 3.0, gap: 0.8, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap) { em.acc -= em.gap; const cnt = 16; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, i / cnt * Math.PI * 2 + 0.2, 170, en.dmg, { r: 7, color: "#a0e0ff" }); } } });
     },
   };
+
+  // ===== 各 Boss 專屬招式（不重複；越後面越長越複雜）=====
+  const TAU = Math.PI * 2, area0 = () => G.world.area;
+  Object.assign(ATTACKS, {
+    // 史萊姆王（分裂/黏液）
+    slimeSpit(e) { const a = angTo(e); for (let i = -1; i <= 1; i++) bossShot(e.x, e.y, a + i * 0.22, 180, e.dmg, { r: 9, color: "#6fd06f" }); },
+    slimeRing(e) { const n = 12, o = Math.random() * TAU; for (let i = 0; i < n; i++) bossShot(e.x, e.y, o + i / n * TAU, 150, e.dmg, { r: 8, color: "#8fe08f" }); },
+    slimeSplit(e) { summonAround("slimelet", 2, 180); },
+    // 狼王（衝鋒/撕咬/嚎叫）
+    wolfBite(e) { const a = angTo(e); for (let i = -3; i <= 3; i++) bossShot(e.x, e.y, a + i * 0.12, 300, e.dmg, { r: 6, color: "#cfd6e0" }); },
+    wolfHowl(e) { summonAround("wolf", 2, 260); },
+    wolfVolley(e) { addEmitter(e, { dur: 0.6, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.12 && em.n < 4) { em.acc -= 0.12; em.n++; bossShot(en.x, en.y, angTo(en), 360, en.dmg, { r: 7, color: "#dfe6f0" }); } } }); },
+    // 火猴王（火/投擲/旋轉）
+    apeThrow(e) { for (let i = 0; i < 2; i++) bossShot(e.x, e.y, angTo(e) + (i ? 0.3 : -0.3), 170, e.dmg, { r: 9, color: "#ff8a3a", homingT: 1.6, homTurn: 2, life: 2.2 }); },
+    apeCone(e) { const a = angTo(e); for (let i = -4; i <= 4; i++) bossShot(e.x, e.y, a + i * 0.1, 250, e.dmg, { r: 7, color: "#ff9a4a" }); },
+    apeSpin(e) { const o = Math.random() * TAU; for (let k = 0; k < 4; k++) { const a = o + k * (TAU / 4); for (let j = -1; j <= 1; j++) bossShot(e.x, e.y, a + j * 0.12, 230, e.dmg, { r: 7, color: "#ffb14a" }); } },
+    // 龍王（水/龍息/潮汐）
+    dragBreath(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 440, width: 72, dur: 0.8, mode: "wave", dmg: e.dmg * 1.3, big: true }); },
+    dragTide(e) { const n = 16, o = Math.random() * TAU; for (let i = 0; i < n; i++) bossShot(e.x, e.y, o + i / n * TAU, 200, e.dmg, { r: 8, color: "#5fd0e0", turn: 0.5 }); },
+    dragVolley(e) { const a = angTo(e); for (let i = -2; i <= 2; i++) bossShot(e.x, e.y, a + i * 0.16, 300, e.dmg, { r: 8, color: "#7fe0ff" }); },
+    // 冰雪女王（冰/控場）
+    iceShard(e) { const n = 14, o = Math.random() * TAU; for (let i = 0; i < n; i++) bossShot(e.x, e.y, o + i / n * TAU, 210, e.dmg, { r: 7, color: "#aee6ff" }); },
+    iceLance(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 440, width: 60, dur: 0.9, dmg: e.dmg * 1.3 }); },
+    iceHoming(e) { for (let i = 0; i < 3; i++) bossShot(e.x, e.y, Math.random() * TAU, 150, e.dmg, { r: 8, color: "#bfe6ff", homingT: 2, homTurn: 2, life: 2.4 }); },
+    // 巨大鳥妖（風/羽毛/俯衝）
+    birdFeather(e) { const a = angTo(e); for (let i = -5; i <= 5; i++) bossShot(e.x, e.y, a + i * 0.09, 280, e.dmg, { r: 6, color: "#c9b0ff" }); },
+    birdGust(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 520, width: 130, dur: 0.7, mode: "wave", dmg: e.dmg * 1.2, big: true }); },
+    birdHoming(e) { for (let i = 0; i < 4; i++) bossShot(e.x, e.y, angTo(e) + (i - 1.5) * 0.3, 180, e.dmg, { r: 7, color: "#d0bcff", homingT: 1.8, homTurn: 2.4, life: 2.2 }); },
+    // 深淵巨獸（混沌/最複雜）
+    abyssSpiral(e) { addEmitter(e, { dur: 1.5, ang: Math.random() * TAU, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.06) { em.acc -= 0.06; em.ang += 0.5; for (let k = 0; k < 3; k++) bossShot(en.x, en.y, em.ang + k * (TAU / 3), 230, en.dmg, { r: 6, color: "#b46bff" }); } } }); },
+    abyssBurst(e) { const a = angTo(e); for (let i = -3; i <= 3; i++) bossShot(e.x, e.y, a + i * 0.14, 320, e.dmg, { r: 8, color: "#c98bff" }); },
+    abyssWall(e) { addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: angTo(e), length: 540, width: 84, dur: 0.9, dmg: e.dmg * 1.4, big: true }); },
+    abyssBite(e) { addFreeCast({ shape: "sector", ox: e.x, oy: e.y, ang: angTo(e), radius: 290, arcHalf: Math.PI * 0.5, dur: 0.85, dmg: e.dmg * 1.5, big: true }); },
+  });
+  Object.assign(ULTS, {
+    // —— 史萊姆王（短）——
+    slimeNova(e) { for (let i = 0; i < 18; i++) bossShot(e.x, e.y, i / 18 * TAU, 160, e.dmg, { r: 8, color: "#6fd06f" }); addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 130, dur: 0.8, dmg: e.dmg * 1.5, big: true }); e.ultMin = 1.2; },
+    slimeRain(e) { e.ultMin = 2.2; addEmitter(e, { dur: 2.0, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.3) { em.acc -= 0.3; const p = G.player; addFreeCast({ shape: "circle", ox: p.x + U.rand(-150, 150), oy: p.y + U.rand(-150, 150), radius: 60, dur: 0.8, dmg: en.dmg * 1.2 }); } } }); },
+    slimeFlood(e) { e.ultMin = 2.0; const ar = area0(); addEmitter(e, { dur: 1.8, gap: 0.55, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < 3) { em.acc -= em.gap; const oy = U.clamp(G.player.y - 150 + em.n * 150, 120, ar.h - 120); em.n++; addFreeCast({ shape: "rect", centered: true, ox: ar.w / 2, oy, ang: 0, length: ar.w, width: 110, dur: 0.65, dmg: en.dmg * 1.2 }); } } }); },
+    // —— 狼王 ——
+    wolfPounce(e) { e.airborne = true; e.ultMin = 2.6; addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 140, dur: 2.0, followT: 1.6, chaseSpeed: 180, dmg: e.dmg * 1.9, big: true, onFire: (c) => { e.airborne = false; e.x = c.ox; e.y = c.oy; } }); },
+    wolfTear(e) { e.ultMin = 2.0; addEmitter(e, { dur: 1.8, gap: 0.5, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < 3) { em.acc -= em.gap; em.n++; addFreeCast({ shape: "sector", ox: en.x, oy: en.y, ang: angTo(en) + U.rand(-0.4, 0.4), radius: 240, arcHalf: Math.PI * 0.4, dur: 0.7, dmg: en.dmg * 1.4 }); } } }); },
+    wolfPack(e) { e.ultMin = 1.6; summonAround("wolf", 4, 300); },
+    // —— 火猴王 ——
+    apeMeteor(e) { e.ultMin = 2.6; addEmitter(e, { dur: 2.4, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.22) { em.acc -= 0.22; const p = G.player; addFreeCast({ shape: "circle", ox: p.x + U.rand(-170, 170), oy: p.y + U.rand(-170, 170), radius: 64, dur: 0.8, dmg: en.dmg * 1.3 }); } } }); },
+    apeFlame(e) { e.ultMin = 2.8; addEmitter(e, { dur: 2.6, ang: Math.random() * TAU, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.06) { em.acc -= 0.06; em.ang += 0.42; for (let k = 0; k < 2; k++) bossShot(en.x, en.y, em.ang + k * Math.PI, 220, en.dmg, { r: 6, color: "#ff8a3a" }); } } }); },
+    apeCross(e) { e.ultMin = 2.0; const fire = (rot) => { for (let k = 0; k < 4; k++) addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: rot + k * (TAU / 4), length: 700, width: 70, dur: 1.0, dmg: e.dmg * 1.4 }); }; fire(Math.random() * Math.PI); addEmitter(e, { dur: 1.6, fn(en, dt, em) { if (!em.n && em.t >= 1.3) { em.n = 1; fire(Math.PI / 4); } } }); },
+    // —— 龍王 ——
+    dragTsunami(e) { e.ultMin = 2.6; addEmitter(e, { dur: 2.4, gap: 0.6, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < 3) { em.acc -= em.gap; em.n++; addFreeCast({ shape: "rect", ox: en.x, oy: en.y, ang: angTo(en), length: 820, width: 150, dur: 0.8, mode: "wave", dmg: en.dmg * 1.4, big: true }); } } }); },
+    dragRings(e) { e.ultMin = 2.4; addEmitter(e, { dur: 2.2, gap: 0.45, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < 4) { em.acc -= em.gap; em.n++; const cnt = 18 + em.n * 2, o = em.n * 0.2; for (let i = 0; i < cnt; i++) bossShot(en.x, en.y, o + i / cnt * TAU, 190, en.dmg, { r: 7, color: "#5fd0e0" }); } } }); },
+    dragSpiral(e) { e.ultMin = 3.0; addEmitter(e, { dur: 2.8, ang: Math.random() * TAU, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.05) { em.acc -= 0.05; em.ang += 0.4; for (let k = 0; k < 3; k++) bossShot(en.x, en.y, em.ang + k * (TAU / 3), 210, en.dmg, { r: 6, color: "#7fe0ff" }); } } }); },
+    // —— 冰雪女王 ——
+    iceBlizzard(e) { e.ultMin = 3.4; const cols = 7, ar = area0(), left = U.clamp(G.player.x - 360, 120, ar.w - 120 - cols * 150); addEmitter(e, { dur: cols * 0.85 + 0.4, gap: 0.85, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < cols) { em.acc -= em.gap; const ox = left + em.n * 150; em.n++; addFreeCast({ shape: "rect", centered: true, ox, oy: ar.h / 2, ang: Math.PI / 2, length: ar.h, width: 120, dur: 0.65, dmg: en.dmg * 1.3 }); } } }); },
+    iceNova(e) { e.ultMin = 1.9; const p = G.player, s = 220; addFreeCast({ shape: "rect", centered: true, ox: p.x, oy: p.y, ang: 0, length: s, width: s, dur: 1.0, dmg: e.dmg * 1.6 }); for (let i = 0; i < 20; i++) bossShot(e.x, e.y, i / 20 * TAU, 180, e.dmg, { r: 7, color: "#aee6ff" }); },
+    iceStorm(e) { e.ultMin = 3.2; addEmitter(e, { dur: 3.0, ang: Math.random() * TAU, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.05) { em.acc -= 0.05; em.ang += 0.38; for (let k = 0; k < 4; k++) bossShot(en.x, en.y, em.ang + k * (TAU / 4), 200, en.dmg, { r: 6, color: "#bfe6ff" }); } } }); },
+    // —— 巨大鳥妖（更長）——
+    birdDive(e) { e.airborne = true; e.ultMin = 3.0; addFreeCast({ shape: "circle", ox: e.x, oy: e.y, radius: 150, dur: 2.0, followT: 1.6, chaseSpeed: 190, dmg: e.dmg * 1.9, big: true, onFire: (c) => { e.airborne = false; e.x = c.ox; e.y = c.oy; for (let i = 0; i < 24; i++) bossShot(c.ox, c.oy, i / 24 * TAU, 200, e.dmg, { r: 7, color: "#c9b0ff" }); } }); },
+    birdTornado(e) { e.ultMin = 3.4; const rows = 7, ar = area0(), top = U.clamp(G.player.y - 360, 120, ar.h - 120 - rows * 150); addEmitter(e, { dur: rows * 0.8 + 0.4, gap: 0.8, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < rows) { em.acc -= em.gap; const oy = top + em.n * 150; em.n++; addFreeCast({ shape: "rect", centered: true, ox: ar.w / 2, oy, ang: 0, length: ar.w, width: 120, dur: 0.6, dmg: en.dmg * 1.3 }); } } }); },
+    birdStorm(e) { e.ultMin = 3.4; addEmitter(e, { dur: 3.2, ang: Math.random() * TAU, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.045) { em.acc -= 0.045; em.ang += 0.4; for (let k = 0; k < 3; k++) bossShot(en.x, en.y, em.ang + k * (TAU / 3), 230, en.dmg, { r: 6, color: "#d0bcff" }); } } }); addEmitter(e, { dur: 3.2, gap: 0.7, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap) { em.acc -= em.gap; for (let i = 0; i < 16; i++) bossShot(en.x, en.y, i / 16 * TAU, 180, en.dmg, { r: 6, color: "#c9b0ff" }); } } }); },
+    // —— 深淵巨獸（最長最複雜）——
+    abyssCross(e) { e.ultMin = 3.6; const fire = (rot) => { for (let k = 0; k < 6; k++) addFreeCast({ shape: "rect", ox: e.x, oy: e.y, ang: rot + k * (Math.PI / 3), length: 900, width: 70, dur: 1.0, dmg: e.dmg * 1.5 }); }; fire(Math.random() * Math.PI); addEmitter(e, { dur: 3.2, gap: 0.9, fn(en, dt, em) { em.acc += dt; if (em.acc >= em.gap && em.n < 3) { em.acc -= em.gap; em.n++; fire(Math.random() * Math.PI); } } }); },
+    abyssChaos(e) { e.ultMin = 3.8; addEmitter(e, { dur: 3.6, ang: Math.random() * TAU, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.04) { em.acc -= 0.04; em.ang += 0.37; for (let k = 0; k < 5; k++) bossShot(en.x, en.y, em.ang + k * (TAU / 5), 220, en.dmg, { r: 6, color: "#b46bff" }); } } }); },
+    abyssRain(e) { e.ultMin = 3.6; addEmitter(e, { dur: 3.4, fn(en, dt, em) { em.acc += dt; if (em.acc >= 0.18) { em.acc -= 0.18; const p = G.player; addFreeCast({ shape: "circle", ox: p.x + U.rand(-200, 200), oy: p.y + U.rand(-200, 200), radius: 70, dur: 0.8, dmg: en.dmg * 1.4 }); } } }); },
+    abyssRush(e) { e.ultMin = 2.0; summonAround("rock", 3, 300); summonAround("bird", 3, 320); },
+  });
 
   function updateBoss(e, dt) {
     const p = G.player;
@@ -1191,7 +1256,7 @@
     // 連續擊殺（右側、輕微震動、含寶箱刷新進度）
     if (combo >= 1) {
       const amp = comboPulse > 0 ? comboPulse * 1.6 : 0; // 弱震
-      const rx = W - 16, ry = 150;
+      const rx = W - 16, ry = 230; // 移到小地圖下方
       ctx.save(); ctx.textAlign = "right";
       ctx.font = "800 16px system-ui";
       ctx.fillStyle = combo >= 15 ? "#ff5470" : combo >= 8 ? "#ffae5e" : "#ffd166";
@@ -1206,6 +1271,7 @@
 
     // 關卡進度 / 引導（頂部置中）
     drawStageStatus(area, cx, cy);
+    if (w.chest) drawEdgeArrow(w.chest.x - cx, w.chest.y - cy, "#ffd166", "🎁");
 
     // 移動控制區（觸控）：下方 15% 實心、固定搖桿
     if (controlMode === "touch") {
@@ -1257,6 +1323,7 @@
       ctx.fillRect(sx(pt.x) - 3, sy(pt.y) - 3, 6, 6);
     }
     if (w.altar) { ctx.fillStyle = w.altar.summoning ? "#ff3030" : "#c79bff"; ctx.font = "9px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("✦", sx(w.altar.x), sy(w.altar.y)); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; }
+    if (w.chest) { ctx.font = "10px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("🎁", sx(w.chest.x), sy(w.chest.y)); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; }
     for (const g of w.grounds) {
       if (g.special) { ctx.fillStyle = "#fff"; ctx.fillRect(sx(g.x) - 2, sy(g.y) - 2, 4, 4); continue; }
       if (g.item.rarity !== "rare" && g.item.rarity !== "legend") continue;
@@ -1288,17 +1355,18 @@
     ctx.restore(); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     if (cleared) { const nxt = area.portals.find(pt => pt.reqLevel); if (nxt) drawGuideArrow(nxt.x - cx, nxt.y - cy); }
   }
-  function drawGuideArrow(sx, sy) {
+  function drawGuideArrow(sx, sy) { drawEdgeArrow(sx, sy, "#7af5d0", "下一關"); }
+  function drawEdgeArrow(sx, sy, color, label) {
     if (sx >= 0 && sx <= W && sy >= 0 && sy <= H) return;
     const ccx = W / 2, ccy = H / 2, mh = W / 2 - 30, mv = H / 2 - 30, ang = Math.atan2(sy - ccy, sx - ccx);
     const tX = Math.abs(Math.cos(ang)) < 1e-3 ? 1e9 : mh / Math.abs(Math.cos(ang));
     const tY = Math.abs(Math.sin(ang)) < 1e-3 ? 1e9 : mv / Math.abs(Math.sin(ang));
     const t = Math.min(tX, tY), tx = ccx + Math.cos(ang) * t, ty = ccy + Math.sin(ang) * t;
     ctx.save(); ctx.translate(tx, ty); ctx.rotate(ang);
-    ctx.fillStyle = "#7af5d0"; ctx.shadowColor = "#7af5d0"; ctx.shadowBlur = 8;
+    ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 8;
     ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, -11); ctx.lineTo(-8, 11); ctx.fill(); ctx.restore();
-    ctx.fillStyle = "#7af5d0"; ctx.font = "700 11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("下一關", tx - Math.cos(ang) * 22, ty - Math.sin(ang) * 22); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = color; ctx.font = "700 11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, tx - Math.cos(ang) * 22, ty - Math.sin(ang) * 22); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
   }
   function drawLootArrows(cx, cy) {
     const w = G.world;

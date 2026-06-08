@@ -28,18 +28,20 @@
 - `attacks`：普攻池（依冷卻隨機施放）。
 - `ults`：大招池；Boss 會停下**閃紅蓄力**後三選一施放。
 
-| id | 外觀 | 名稱 | HP | 普攻 | 大招 |
-|----|------|------|----|------|------|
-| slimeKing | 🟢 | 史萊姆王 | 1200 | ring, aimVolley | novaRing, bulletRings, meteorRain |
-| wolfKing | 🐺 | 狼王 | 3200 | bigBite, aimVolley, coneBurst | jumpSlam, sectorSweep, crossBeams |
-| monkeyKing | 🐒 | 火猴王 | 6000 | coneBurst, aimBurst, bigBite | meteorRain, spiralStorm, jumpCross |
-| dragonKing | 🐉 | 龍王 | 11000 | ring, spiral, aimBurst, bigBite | bulletRings, crossBeams, spiralPlusRing |
-| iceQueen | ❄️ | 冰雪女王 | 18000 | aimVolley, wallRect, ring, twinSpiral | fieldSweepH, boxTrap, bulletRings, sectorSweep |
-| birdDemon | 🦅 | 巨大鳥妖 | 30000 | coneBurst, aimBurst, homingOrbs | jumpCross, fieldSweepV, spiralPlusRing, meteorRain |
-| abyssBeast | 👹 | 深淵巨獸 | 55000 | spiral, aimBurst, wallRect, bigBite, homingOrbs | crossBeams, spiralPlusRing, jumpCross, fieldSweepV, chargerRush, meteorRain |
+每隻 Boss 有**專屬不重複**的 3+ 普攻與 3+ 大招（越後面關卡大招越長越複雜）。
 
-### 招式工具（定義於 js/game.js 的 ATTACKS / ULTS）
-- 普攻：`aimVolley`(瞄準齊射) `ring`(環形) `spiral`(螺旋) `aimBurst`(連射) `wallRect`(矩形) `sectorSlash`(扇形) `bigBite`(超大扇形撕咬) `coneBurst`(錐形) `homingOrbs`(追蹤彈) `twinSpiral`(雙臂螺旋)
-- 大招：`novaRing` `meteorRain`(隕石) `sectorSweep`(連續扇形) `crossBeams`(十字光束) `bulletRings`(多重環) `spiralStorm`(螺旋風暴) `jumpSlam`(跳躍砸地) `jumpCross`(跳躍+十字) `homingBloom`(追蹤爆) `fieldSweepH/V`(全場掃描) `megaCharge`(大光波) `bomberSwarm`/`chargerRush`(召喚波) `boxTrap`(方框) `spiralPlusRing`(複合)
+| id | 外觀 | 名稱 | HP | 專屬普攻 | 專屬大招 |
+|----|------|------|----|---------|---------|
+| slimeKing | 🟢 | 史萊姆王 | 700 | slimeSpit, slimeRing, slimeSplit(分裂) | slimeNova, slimeRain, slimeFlood |
+| wolfKing | 🐺 | 狼王 | 1800 | wolfBite, wolfHowl(召喚), wolfVolley | wolfPounce(撲擊), wolfTear(連續撕咬), wolfPack(狼群) |
+| monkeyKing | 🐒 | 火猴王 | 3600 | apeThrow(火球追蹤), apeCone, apeSpin | apeMeteor, apeFlame, apeCross |
+| dragonKing | 🐉 | 龍王 | 6500 | dragBreath(龍息光波), dragTide(旋轉彈), dragVolley | dragTsunami(海嘯光波), dragRings, dragSpiral |
+| iceQueen | ❄️ | 冰雪女王 | 10000 | iceShard, iceLance, iceHoming | iceBlizzard(暴風雪掃描), iceNova(冰晶方框), iceStorm |
+| birdDemon | 🦅 | 巨大鳥妖 | 16000 | birdFeather, birdGust(疾風光波), birdHoming | birdDive(俯衝+爆), birdTornado(龍捲掃描), birdStorm(複合) |
+| abyssBeast | 👹 | 深淵巨獸 | 28000 | abyssSpiral, abyssBurst, abyssWall, abyssBite | abyssCross(六向光束×3波), abyssChaos(五臂螺旋), abyssRain, abyssRush(召喚) |
 
-可重用工具：`bossShot`(彈幕)、`addFreeCast`(圓/扇/矩形讀條，可 `mode:'wave'` 放光波、`followT/chaseSpeed` 追蹤、`centered` 正方形)、`addEmitter`(持續發射)。
+> 全部 Boss 招式互不重複；HP/傷害逐關提升，大招持續時間由史萊姆王 ~1.2s 漸增到深淵巨獸 ~3.8s。
+
+### 可重用招式工具（js/game.js）
+`bossShot`(彈幕，可帶 homing/turn/accel) · `addFreeCast`(圓/扇/矩形讀條，可 `mode:'wave'` 光波、`followT/chaseSpeed` 追蹤、`centered` 正方形) · `addEmitter`(持續發射) · `summonAround`(召喚波)。
+新增 Boss 招式：在 ATTACKS / ULTS 加一個唯一 id 的函式，再於該 Boss 的 `attacks`/`ults` 引用。
