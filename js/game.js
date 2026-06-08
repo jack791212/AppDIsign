@@ -749,22 +749,18 @@
 
     // 拾取地面道具（拾取範圍內自動吸取）
     const pr = p.pickRange || 60;
-    let doVacuum = false;
+    if (w.magnetT > 0) w.magnetT -= dt;
+    const mag = w.magnetT > 0; // 磁鐵啟動：全圖吸取（依正常速度飛向玩家）
     for (let i = w.grounds.length - 1; i >= 0; i--) {
       const g = w.grounds[i]; g.age += dt; g.bob = Math.sin(g.age * 4) * 3;
       const gd = U.dist(g.x, g.y, p.x, p.y);
       if (gd < p.r + 16) {
-        if (g.special === "magnet") { doVacuum = true; if (G.sfx) G.sfx("pickup"); G.toast("🧲 磁鐵！全圖吸取"); }
+        if (g.special === "magnet") { if (G.sfx) G.sfx("pickup"); w.magnetT = 10; G.toast("🧲 磁鐵！全圖物品飛向你"); }
         else G.addToBag(g.item);
         w.grounds.splice(i, 1); continue;
       }
-      if (gd < pr) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = Math.min(440, 130 + (pr - gd) * 3); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
+      if (gd < pr || mag) { const a = Math.atan2(p.y - g.y, p.x - g.x), sp = Math.min(440, 130 + (pr - gd) * 3); g.x += Math.cos(a) * sp * dt; g.y += Math.sin(a) * sp * dt; }
       else if (g.age > 60) w.grounds.splice(i, 1);
-    }
-    if (doVacuum) {
-      for (const o of w.orbs) G.gainXp(o.xp); w.orbs.length = 0;
-      let gg = 0; for (const c of w.coins) gg += c.gold; w.coins.length = 0; if (gg) { G.save.gold += gg; document.getElementById("coins").textContent = "🪙 " + G.save.gold; }
-      for (let i = w.grounds.length - 1; i >= 0; i--) { const g = w.grounds[i]; if (g.special) continue; G.addToBag(g.item); w.grounds.splice(i, 1); }
     }
 
     // 經驗球（噴出後可被拾取範圍吸取，碰到才入帳）
@@ -773,7 +769,7 @@
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
       if (od < p.r + 14) { G.gainXp(o.xp); if (G.sfx) G.sfx("pickup"); w.orbs.splice(i, 1); continue; }
-      if (od < pr) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.orbs.splice(i, 1);
     }
 
@@ -783,7 +779,7 @@
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
       if (od < p.r + 14) { G.save.gold += o.gold; document.getElementById("coins").textContent = "🪙 " + G.save.gold; if (G.sfx) G.sfx("pickup"); w.coins.splice(i, 1); continue; }
-      if (od < pr) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
+      if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = Math.min(560, 170 + (pr - od) * 4); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.coins.splice(i, 1);
     }
 
@@ -828,7 +824,13 @@
     } else el.style.display = "none";
   }
   function travel(pt) {
-    const from = G.world.areaId;
+    const w = G.world, from = w.areaId;
+    // 磁鐵啟動中經過傳送門 → 瞬間把剩餘物品全部收進來
+    if (w.magnetT > 0) {
+      for (const o of w.orbs) G.gainXp(o.xp); w.orbs.length = 0;
+      let gg = 0; for (const c of w.coins) gg += c.gold; if (gg) G.save.gold += gg; w.coins.length = 0;
+      for (let i = w.grounds.length - 1; i >= 0; i--) { const g = w.grounds[i]; if (!g.special) { G.addToBag(g.item); w.grounds.splice(i, 1); } }
+    }
     G.enterArea(pt.to, from);
     G.toast("已抵達 " + G.AREAS[pt.to].name);
   }

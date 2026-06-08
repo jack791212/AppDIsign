@@ -330,7 +330,7 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, magnetT: 0, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
@@ -339,7 +339,7 @@
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
     w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.flashes = []; w.extraPortals = []; w.obstacles = []; w.summonTimer = 1;
-    w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0; w.chest = null; w.killCount = 0;
+    w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0; w.chest = null; w.killCount = 0; w.magnetT = 0;
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
       if (entryPortalFrom && G.AREAS[entryPortalFrom] && !G.AREAS[entryPortalFrom].safe) G.save.recallReturn = entryPortalFrom;
