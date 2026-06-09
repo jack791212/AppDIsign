@@ -174,8 +174,8 @@
     const s = G.save, p = G.player;
     const lv = s.level;
     // 等級基礎成長
-    let maxHp = 100 + (lv - 1) * 12;
-    let dmg = 10 + (lv - 1) * 2.2;
+    let maxHp = 100 + (lv - 1) * 14;
+    let dmg = 10 + (lv - 1) * 2.4;
     let atkSpdPct = 0, dmgPct = 0, critPct = 5, critDmgPct = 50, movePct = 0;
     let projectiles = 1, pierce = 0, armorFlat = 0, hpFlat = 0, minionPct = 0, rangePct = 0, pickRange = 0;
     const procs = { chain: 0, critboom: 0, lifesteal: 0, frost: 0, burn: 0, thorns: 0, regen: 0, storm: 0, killHeal: 0, paraOnHit: 0, freezeChance: 0, whirl: 0, explosive: 0 };
@@ -278,7 +278,7 @@
   };
 
   // ================= 等級 / 經驗 =================
-  G.xpForLevel = (lv) => Math.floor(13 * Math.pow(lv, 1.42)) + 16;
+  G.xpForLevel = (lv) => Math.floor(12 * Math.pow(lv, 1.4)) + 15;
 
   // 經驗球數量：依玩家與怪物等級差，模擬越級/打爛怪
   G.xpOrbCount = function (enemyLvl, playerLvl) {
@@ -412,12 +412,13 @@
   G.materializeEnemy = function (typeId, x, y) {
     const w = G.world, area = w.area;
     const t = G.ENEMIES[typeId]; if (!t) return;
-    const lvScale = 1 + area.level * 0.18;
+    const lvScale = 1 + area.level * 0.18;          // 經驗用
+    const hpScale = 1 + area.level * 0.15;          // 血量（避免後期太肉）
     w.enemies.push({
       typeId, name: t.name, ic: t.ic, x, y, r: t.r, color: t.color, lvl: area.level,
       elem: typeId === "bomber" ? "fire" : (area.elem || null),
-      hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
-      dmg: Math.round(t.dmg * (1 + area.level * 0.2)), speed: t.speed,
+      hp: Math.round(t.hp * hpScale), maxHp: Math.round(t.hp * hpScale),
+      dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
       baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
       slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: false,
@@ -440,7 +441,7 @@
       cast: null, castCd: 0, dashT: 0, dvx: 0, dvy: 0,
       attacks: t.attacks || ["aimVolley"], ults: t.ults || ["novaRing"],
       emitters: [], ultState: "move", ultT: 0, ultDur: 0, ultActiveT: 0, ultMin: 1.2,
-      atkCd: rand(1.4, 2.4), ultCd: rand(6, 9),
+      atkCd: rand(1.5, 2.6), ultCd: rand(7, 10),
       tier: Math.max(0, Math.round(area.level / 7)), airborne: false,
     };
     w.enemies.push(b); w.boss = b; w.bossSpawned = true;
