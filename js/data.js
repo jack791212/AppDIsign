@@ -270,3 +270,49 @@ G.BLESSINGS = {
 // 攤平成 id -> boon
 G.ALL_BOONS = {};
 for (const gid in G.BLESSINGS) for (const b of G.BLESSINGS[gid].boons) { b.god = gid; b.godName = G.BLESSINGS[gid].name; b.godIc = G.BLESSINGS[gid].ic; b.godColor = G.BLESSINGS[gid].color; G.ALL_BOONS[b.id] = b; }
+
+// ============ 深淵之鏡（永久被動，深淵結晶購買）============
+// 每次深淵 Run 結束依到達房數獲得結晶；花結晶點永久加成（always 生效）。
+G.MIRROR = [
+  { id:'mr_dmg',  name:'深淵之力', desc:'攻擊力',   stat:'dmgPct',     per:3,  max:12, cost:3 },
+  { id:'mr_hp',   name:'深淵之軀', desc:'最大生命', stat:'hp',         per:30, max:12, cost:3 },
+  { id:'mr_arm',  name:'深淵護甲', desc:'護甲',     stat:'armorFlat',  per:3,  max:8,  cost:4 },
+  { id:'mr_spd',  name:'深淵疾風', desc:'移動速度', stat:'movePct',    per:2,  max:8,  cost:4 },
+  { id:'mr_crit', name:'深淵致命', desc:'暴擊率',   stat:'critPct',    per:2,  max:6,  cost:5 },
+  { id:'mr_cd',   name:'深淵狂暴', desc:'暴擊傷害', stat:'critDmgPct', per:8,  max:8,  cost:5 },
+  { id:'mr_pick', name:'深淵貪婪', desc:'拾取範圍', stat:'pickRange',  per:30, max:5,  cost:2 },
+];
+
+// ============ 套裝（同套 2/4 件加成）============
+// 掉落的裝備有機率成為套裝件（item.setId）；同套裝備數達門檻給加成。
+G.SETS = {
+  warlord:  { name:'狂戰套', color:'#ff5470', b2:{ stat:'dmgPct',     amt:18, desc:'攻擊 +18%' },      b4:{ proc:'whirl',       amt:1,  desc:'獲得旋風斬' } },
+  frost:    { name:'寒霜套', color:'#7fd0ff', b2:{ proc:'frost',      amt:30, desc:'命中減速 +30%' },  b4:{ proc:'freezeChance',amt:12, desc:'命中 12% 定身' } },
+  vitality: { name:'活力套', color:'#5fd98a', b2:{ stat:'hp',         amt:130,desc:'生命 +130' },      b4:{ proc:'lifesteal',   amt:12, desc:'吸血 +12%' } },
+  storm:    { name:'雷暴套', color:'#cfa0ff', b2:{ proc:'chain',      amt:30, desc:'連鎖 +30%' },      b4:{ stat:'atkSpdPct',   amt:20, desc:'攻速 +20%' } },
+};
+G.SET_IDS = Object.keys(G.SETS);
+
+// ============ 成就（一次性，達成給結晶/金幣）============
+G.ACHIEVEMENTS = [
+  { id:'a_lv10',  name:'嶄露頭角', desc:'角色達到 10 級',       chk:s=>s.level>=10,  crystals:5 },
+  { id:'a_lv25',  name:'身經百戰', desc:'角色達到 25 級',       chk:s=>s.level>=25,  crystals:10 },
+  { id:'a_lv50',  name:'登峰造極', desc:'角色達到 50 級',       chk:s=>s.level>=50,  crystals:30 },
+  { id:'a_boss1', name:'首度屠龍', desc:'擊敗任一 Boss',        chk:s=>Object.values(s.killedBoss||{}).some(Boolean), crystals:5 },
+  { id:'a_bossAll',name:'萬王之王',desc:'擊敗全部 7 個 Boss',   chk:s=>Object.values(s.killedBoss||{}).filter(Boolean).length>=7, crystals:40 },
+  { id:'a_fl5',   name:'深入淺出', desc:'深淵到達第 5 房',      chk:s=>(s.maxFloor||0)>=5,  crystals:8 },
+  { id:'a_fl15',  name:'無畏深淵', desc:'深淵到達第 15 房',     chk:s=>(s.maxFloor||0)>=15, crystals:20 },
+  { id:'a_enh10', name:'鍛造大師', desc:'將裝備強化到 +10',     chk:s=>(s.stats&&s.stats.maxPlus||0)>=10, crystals:20 },
+  { id:'a_legend',name:'傳奇獵手', desc:'獲得第一件傳奇裝備',   chk:s=>(s.stats&&s.stats.legendaries||0)>=1, crystals:10 },
+  { id:'a_rich',  name:'富甲一方', desc:'累積擁有 5000 金幣',   chk:s=>s.gold>=5000, gold:0, crystals:10 },
+];
+
+// ============ 每日任務（每日 3 則）============
+G.DAILY_POOL = [
+  { id:'d_kill',  type:'kill',  name:'擊殺 100 隻敵人', goal:100, crystals:5 },
+  { id:'d_kill2', type:'kill',  name:'擊殺 250 隻敵人', goal:250, crystals:8 },
+  { id:'d_boss',  type:'boss',  name:'擊敗 1 個 Boss',  goal:1,   crystals:6 },
+  { id:'d_floor', type:'floor', name:'深淵前進 8 房',   goal:8,   crystals:8 },
+  { id:'d_gold',  type:'gold',  name:'獲得 800 金幣',   goal:800, crystals:5 },
+  { id:'d_elite', type:'elite', name:'擊殺 5 隻精英怪', goal:5,   crystals:8 },
+];

@@ -24,16 +24,27 @@
       equipped: { weapon: null, armor: null, helmet: null, ring: null },
       bag: [], area: "town",
       killedBoss: {}, maxFloor: 0,
+      crystals: 0, mirror: {}, achievements: {}, daily: { date: "", list: [] },
+      stats: { legendaries: 0, maxPlus: 0, eliteKills: 0 },
     };
   };
   G.loadSave = function () {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (raw) { G.save = JSON.parse(raw); if (!G.save.qi || !Array.isArray(G.save.qi.picks)) G.save.qi = { picks: [] }; return true; }
+      if (raw) { G.save = JSON.parse(raw); migrateSave(G.save); return true; }
     } catch (e) {}
     G.save = G.newSave();
     return false;
   };
+  function migrateSave(s) {
+    if (!s.qi || !Array.isArray(s.qi.picks)) s.qi = { picks: [] };
+    if (s.maxFloor == null) s.maxFloor = 0;
+    if (s.crystals == null) s.crystals = 0;
+    if (!s.mirror) s.mirror = {};
+    if (!s.achievements) s.achievements = {};
+    if (!s.daily) s.daily = { date: "", list: [] };
+    if (!s.stats) s.stats = { legendaries: 0, maxPlus: 0, eliteKills: 0 };
+  }
   G.persist = function () {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(G.save)); } catch (e) {}
   };
@@ -90,7 +101,15 @@
       const la = G.LEGEND_AFFIXES[pick(keys)];
       affixes.push({ id: la.id, value: la.roll[0], proc: true, legend: true });
     }
-    return { uid: UID++, slot, baseName: base.n, ic: base.ic, wtype: base.wtype, rarity, ilvl, affixes };
+    const item = { uid: UID++, slot, baseName: base.n, ic: base.ic, wtype: base.wtype, rarity, ilvl, affixes };
+    // 稀有以上有機率成為套裝件
+    const ri = G.RARITY_ORDER.indexOf(rarity);
+    if (ri >= 2 && Math.random() < (ri >= 3 ? 0.35 : 0.18)) {
+      const sid = pick(G.SET_IDS); item.setId = sid;
+      item.baseName = G.SETS[sid].name + "·" + item.baseName;
+    }
+    if (rarity === "legend") { G.save.stats = G.save.stats || {}; G.save.stats.legendaries = (G.save.stats.legendaries || 0) + 1; }
+    return item;
   };
   G.affixText = function (af) {
     const def = af.legend ? G.LEGEND_AFFIXES[af.id] : G.AFFIXES[af.id];
@@ -147,7 +166,7 @@
     G.save.gold -= cost;
     const ok = Math.random() < G.enhanceRate(cur);
     let result;
-    if (ok) { item.plus = cur + 1; result = "success"; if (G.sfx) G.sfx("level"); }
+    if (ok) { item.plus = cur + 1; result = "success"; if (G.sfx) G.sfx("level"); G.save.stats.maxPlus = Math.max(G.save.stats.maxPlus || 0, item.plus); G.checkAchievements(); }
     else if (G.enhanceFail(cur) === "explode") {
       // 從背包或裝備欄移除
       const bi = G.save.bag.indexOf(item); if (bi >= 0) G.save.bag.splice(bi, 1);
@@ -243,6 +262,17 @@
       const b = G.ALL_BOONS[bid]; if (!b) continue;
       if (b.stat) addStat(b.stat, b.amt); else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + b.amt;
     }
+    // 深淵之鏡（永久被動）
+    if (s.mirror) for (const node of G.MIRROR) { const rk = s.mirror[node.id] || 0; if (rk) addStat(node.stat, node.per * rk); }
+    // 套裝（同套 2/4 件）
+    const setCount = {};
+    for (const slot of G.SLOTS) { const it = s.equipped[slot]; if (it && it.setId) setCount[it.setId] = (setCount[it.setId] || 0) + 1; }
+    for (const sid in setCount) {
+      const set = G.SETS[sid]; if (!set) continue; const c = setCount[sid];
+      const applyB = (b) => { if (b.stat) addStat(b.stat, b.amt); else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + b.amt; };
+      if (c >= 2) applyB(set.b2);
+      if (c >= 4) applyB(set.b4);
+    }
 
     // 武器類型：決定攻擊方式與倍率
     const wpn = s.equipped.weapon;
@@ -283,10 +313,56 @@
   };
 
   // ================= 祝福 Run（深淵之門）=================
-  G.run = { active: false, room: 0, blessings: [] };
-  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.blessings = []; };
-  G.endRun = function () { if (!G.run.active) return; G.run.active = false; G.run.blessings = []; G.computeStats(); };
+  G.run = { active: false, room: 0, maxRoom: 0, blessings: [] };
+  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.maxRoom = 0; G.run.blessings = []; };
+  G.endRun = function () {
+    if (!G.run.active) return;
+    const gained = Math.floor((G.run.maxRoom || 1) * 1.5);
+    if (gained > 0) { G.save.crystals = (G.save.crystals || 0) + gained; G.toast("🔮 深淵結束：獲得 💎" + gained + " 深淵結晶"); }
+    G.run.active = false; G.run.blessings = []; G.persist(); G.computeStats(); if (G.refreshHud) G.refreshHud();
+  };
   G.addBoon = function (id) { const b = G.ALL_BOONS[id]; if (!b) return; G.run.blessings.push(id); G.computeStats(); G.toast("🙏 獲得祝福：" + b.godIc + b.name); };
+
+  // ================= 深淵之鏡（永久被動）=================
+  G.mirrorCost = function (node) { const rk = G.save.mirror[node.id] || 0; return node.cost * (rk + 1); };
+  G.mirrorBuy = function (id) {
+    const node = G.MIRROR.find(n => n.id === id); if (!node) return false;
+    const rk = G.save.mirror[id] || 0; if (rk >= node.max) { G.toast("已滿級"); return false; }
+    const cost = G.mirrorCost(node); if ((G.save.crystals || 0) < cost) { G.toast("深淵結晶不足（需 💎" + cost + "）"); return false; }
+    G.save.crystals -= cost; G.save.mirror[id] = rk + 1;
+    G.computeStats(); G.persist(); if (G.refreshHud) G.refreshHud(); return true;
+  };
+
+  // ================= 成就 / 每日任務 =================
+  G.checkAchievements = function () {
+    let any = false;
+    for (const a of G.ACHIEVEMENTS) {
+      if (G.save.achievements[a.id]) continue;
+      if (a.chk(G.save)) { G.save.achievements[a.id] = true; if (a.crystals) G.save.crystals = (G.save.crystals || 0) + a.crystals; if (a.gold) G.save.gold += a.gold; G.toast("🏆 成就：" + a.name + (a.crystals ? " +💎" + a.crystals : "")); any = true; }
+    }
+    if (any) { G.persist(); if (G.refreshHud) G.refreshHud(); }
+  };
+  G.todayStr = function () { try { const d = new Date(); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); } catch (e) { return "x"; } };
+  G.ensureDaily = function () {
+    const today = G.todayStr();
+    if (!G.save.daily || G.save.daily.date !== today) {
+      const pool = G.DAILY_POOL.slice(), list = [];
+      for (let i = 0; i < 3 && pool.length; i++) { const q = pool.splice(Math.floor(Math.random() * pool.length), 1)[0]; list.push({ id: q.id, type: q.type, goal: q.goal, prog: 0, done: false }); }
+      G.save.daily = { date: today, list }; G.persist();
+    }
+  };
+  G.trackEvent = function (type, amt) {
+    amt = amt || 1;
+    const d = G.save.daily;
+    if (d && d.list) for (const q of d.list) {
+      if (!q.done && q.type === type) {
+        q.prog = (q.prog || 0) + amt;
+        if (q.prog >= q.goal) { q.done = true; const t = G.DAILY_POOL.find(x => x.id === q.id); if (t) { G.save.crystals = (G.save.crystals || 0) + t.crystals; G.toast("📅 每日完成：" + t.name + " +💎" + t.crystals); } }
+      }
+    }
+    if (type === "elite") G.save.stats.eliteKills = (G.save.stats.eliteKills || 0) + amt;
+    G.checkAchievements();
+  };
 
   // ================= 等級 / 經驗 =================
   G.xpForLevel = (lv) => Math.floor(12 * Math.pow(lv, 1.4)) + 15;
@@ -422,8 +498,9 @@
     w.roomCleared = false; w.doors = null;
     G.player.x = area.w / 2; G.player.y = area.h - 160;
     genObstacles(area);
-    G.run.room = floor;
+    G.run.room = floor; G.run.maxRoom = Math.max(G.run.maxRoom || 0, floor);
     if (!G.save.maxFloor || floor > G.save.maxFloor) { G.save.maxFloor = floor; }
+    G.trackEvent("floor", 1);
     G.persist();
     if (floor % 6 === 0) G.spawnDepthsBoss(floor); // 每 6 房一個守關者
     else { const cnt = Math.min(area.maxAlive, 6 + Math.floor(floor * 0.7)); for (let i = 0; i < cnt; i++) spawnEnemy(true); }
@@ -637,6 +714,7 @@
     G.spawnXpOrbs(e); // 經驗改為經驗球，需拾取
     if (!e.boss) w.killCount = (w.killCount || 0) + 1; // 開啟祭壇/層數所需擊殺數
     if (G.onKill) G.onKill(); // 連殺計數
+    G.trackEvent("kill", 1); if (e.elite) G.trackEvent("elite", 1); if (e.boss) G.trackEvent("boss", 1);
     // 擊殺回血（傳奇）
     if (G.player.procs.killHeal > 0) G.healPlayer(G.player.maxHp * G.player.procs.killHeal / 100);
     // 精英怪：保證掉大獎（額外裝備 + 金幣）

@@ -159,10 +159,17 @@
     if (!item) return `<div class="cmpCol"><div class="ctitle">${title}</div><div class="ename" style="color:#6b6480">（無）</div></div>`;
     const r = G.RARITY[item.rarity];
     const wt = (item.slot === "weapon" && item.wtype && G.WEAPON_TYPES[item.wtype]) ? G.WEAPON_TYPES[item.wtype] : null;
+    let setHtml = "";
+    if (item.setId && G.SETS[item.setId]) {
+      const set = G.SETS[item.setId], cnt = G.SLOTS.reduce((n, sl) => n + (G.save.equipped[sl] && G.save.equipped[sl].setId === item.setId ? 1 : 0), 0);
+      setHtml = `<div style="margin-top:6px;border-top:1px solid #3a3358;padding-top:5px"><div style="font-size:12px;font-weight:700;color:${set.color}">${set.name}（已裝 ${cnt}）</div>`
+        + `<div class="aff" style="font-size:11px;color:${cnt >= 2 ? "#7af5d0" : "#6b6480"}">(2) ${set.b2.desc}</div>`
+        + `<div class="aff" style="font-size:11px;color:${cnt >= 4 ? "#7af5d0" : "#6b6480"}">(4) ${set.b4.desc}</div></div>`;
+    }
     return `<div class="cmpCol${isEquipped ? " equipped" : ""}"><div class="ctitle">${title}</div>` +
       `<div class="ename t-${r.cls}">${item.ic} ${item.baseName}${item.plus ? " +" + item.plus : ""}${isEquipped ? '<span class="eqtag">裝備中</span>' : ""}</div>` +
       `<div class="ctitle" style="margin:2px 0 6px">${r.name}${wt ? " · " + wt.name : ""} · iLv ${item.ilvl}</div>` +
-      affixHtml(item) + "</div>";
+      affixHtml(item) + setHtml + "</div>";
   }
   G.openItem = function (item, equipped) {
     const r = G.RARITY[item.rarity], card = $("itemCard");
@@ -296,22 +303,59 @@
     });
   };
 
-  // 女神對話入口（恢復生命 + 鼓勵）
+  // 女神對話入口（恢復生命 + 鏡子 + 目標）
   G.openGoddess = function () {
-    const lines = [
-      "勇敢的冒險者，願星光照亮你的路。",
-      "每一次倒下，都是為了更強地站起。",
-      "來吧，讓我撫平你的傷口。",
-    ];
     G.startDialogue({
       name: "女神", ic: "🧚",
-      lines,
+      lines: ["勇敢的冒險者，願星光照亮你的路。", "深淵的結晶能換取永恆之力。你需要什麼？"],
       options: [
-        { label: "🙏 接受祝福（回復生命）", action: () => { G.player.hp = G.player.maxHp; if (G.sfx) G.sfx("level"); G.toast("女神的祝福：生命已完全回復！"); } },
+        { label: "❤️ 接受祝福（回復生命）", action: () => { G.player.hp = G.player.maxHp; if (G.sfx) G.sfx("level"); G.toast("女神的祝福：生命已完全回復！"); } },
+        { label: "🔮 深淵之鏡（永久強化）", action: G.openMirror },
+        { label: "🎯 目標與成就", action: G.openGoals },
         { label: "離開", action: () => {} },
       ],
     });
   };
+  // ---------- 深淵之鏡 ----------
+  G.openMirror = function () {
+    $("mirrorCry").textContent = "💎 " + (G.save.crystals || 0) + " 深淵結晶";
+    const body = $("mirrorBody"); body.innerHTML = "";
+    const tip = document.createElement("div"); tip.style.cssText = "font-size:12px;color:#9b8fc0;margin-bottom:8px"; tip.textContent = "深淵 Run 結束依到達房數獲得結晶，可購買永久被動。"; body.appendChild(tip);
+    for (const node of G.MIRROR) {
+      const rk = G.save.mirror[node.id] || 0, maxed = rk >= node.max, cost = G.mirrorCost(node);
+      const row = document.createElement("div"); row.className = "talnode"; row.style.cssText = "display:flex;justify-content:space-between;align-items:center;cursor:pointer";
+      row.innerHTML = `<div><span style="font-weight:700;color:#c9a0ff">${node.name}</span><div style="font-size:11px;color:#9b8fc0">${node.desc} +${node.per}/級　${rk}/${node.max}</div></div>`
+        + `<span style="font-size:12px;color:${maxed ? "#888" : "#7af5d0"}">${maxed ? "滿級" : "💎" + cost}</span>`;
+      if (!maxed) row.onclick = () => { if (G.mirrorBuy(node.id)) G.openMirror(); };
+      body.appendChild(row);
+    }
+    $("mirrorPanel").classList.add("show");
+  };
+  G.closeMirror = function () { $("mirrorPanel").classList.remove("show"); };
+  // ---------- 目標：每日 + 成就 ----------
+  G.openGoals = function () {
+    if (G.ensureDaily) G.ensureDaily();
+    $("goalCry").textContent = "💎 " + (G.save.crystals || 0);
+    const body = $("goalBody"); body.innerHTML = "";
+    const h1 = document.createElement("div"); h1.style.cssText = "font-size:14px;font-weight:700;color:#7af5d0;margin:4px 0"; h1.textContent = "📅 每日任務"; body.appendChild(h1);
+    for (const q of (G.save.daily.list || [])) {
+      const t = G.DAILY_POOL.find(x => x.id === q.id) || {};
+      const row = document.createElement("div"); row.className = "talnode";
+      row.innerHTML = `<div style="display:flex;justify-content:space-between"><span style="font-weight:700;${q.done ? "color:#7af5d0" : ""}">${q.done ? "✅ " : ""}${t.name || q.id}</span><span style="font-size:12px;color:#ffd166">💎${t.crystals || 0}</span></div>`
+        + `<div style="font-size:11px;color:#9b8fc0">進度 ${Math.min(q.prog || 0, q.goal)}/${q.goal}</div>`;
+      body.appendChild(row);
+    }
+    const h2 = document.createElement("div"); h2.style.cssText = "font-size:14px;font-weight:700;color:#ffd166;margin:12px 0 4px"; h2.textContent = "🏆 成就"; body.appendChild(h2);
+    for (const a of G.ACHIEVEMENTS) {
+      const done = G.save.achievements[a.id];
+      const row = document.createElement("div"); row.className = "talnode"; if (done) row.style.borderColor = "#7af5d0";
+      row.innerHTML = `<div style="display:flex;justify-content:space-between"><span style="font-weight:700;${done ? "color:#7af5d0" : ""}">${done ? "✅ " : "🔒 "}${a.name}</span><span style="font-size:12px;color:#ffd166">💎${a.crystals || 0}</span></div>`
+        + `<div style="font-size:11px;color:#9b8fc0">${a.desc}</div>`;
+      body.appendChild(row);
+    }
+    $("goalPanel").classList.add("show");
+  };
+  G.closeGoals = function () { $("goalPanel").classList.remove("show"); };
 
   // ---------- 城鎮商店：強化（裝備中／背包中 區塊式）----------
   G.openEnhance = function () {

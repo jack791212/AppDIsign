@@ -881,7 +881,7 @@
       const o = w.coins[i]; o.age += dt;
       o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9;
       const od = U.dist(o.x, o.y, p.x, p.y);
-      if (od < p.r + 14) { G.save.gold += o.gold; document.getElementById("coins").textContent = "🪙 " + G.save.gold; if (G.sfx) G.sfx("pickup"); w.coins.splice(i, 1); continue; }
+      if (od < p.r + 14) { G.save.gold += o.gold; if (G.trackEvent) G.trackEvent("gold", o.gold); document.getElementById("coins").textContent = "🪙 " + G.save.gold; if (G.sfx) G.sfx("pickup"); w.coins.splice(i, 1); continue; }
       if (od < pr || mag) { const a = Math.atan2(p.y - o.y, p.x - o.x), sp = U.clamp(170 + (pr - od) * 4, 190, 600) * (mag ? 2 : 1); o.x += Math.cos(a) * sp * dt; o.y += Math.sin(a) * sp * dt; }
       else if (o.age > 45) w.coins.splice(i, 1);
     }
@@ -1508,6 +1508,8 @@
     document.getElementById("bagClose").onclick = G.closeBag;
     document.getElementById("talClose").onclick = G.closeTalents;
     document.getElementById("shopClose").onclick = G.closeShop;
+    document.getElementById("mirrorClose").onclick = G.closeMirror;
+    document.getElementById("goalClose").onclick = G.closeGoals;
     document.getElementById("startBtn").onclick = beginGame;
     document.getElementById("respawnBtn").onclick = respawn;
     const ct = document.getElementById("ctrlToggle");
@@ -1521,6 +1523,8 @@
   // 啟動
   G.loadSave();
   G.computeStats();
+  if (G.ensureDaily) G.ensureDaily();
+  if (G.checkAchievements) G.checkAchievements();
   wire();
   // 開始畫面文字依存檔狀態
   const hasProgress = G.save.level > 1 || G.save.bag.length > 0 || (G.save.equipped.weapon);
