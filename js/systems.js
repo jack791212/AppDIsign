@@ -23,7 +23,7 @@
       qi: { picks: [] }, // 功法：每排(每5級)三選一，picks[tier]='fire'|'lightning'|'ice'
       equipped: { weapon: null, armor: null, helmet: null, ring: null },
       bag: [], area: "town",
-      killedBoss: {},
+      killedBoss: {}, maxFloor: 0,
     };
   };
   G.loadSave = function () {
@@ -328,7 +328,7 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, magnetT: 0, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, magnetT: 0, floor: 0, descend: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
@@ -338,6 +338,8 @@
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
     w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.flashes = []; w.extraPortals = []; w.obstacles = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0; w.chest = null; w.killCount = 0; w.magnetT = 0;
+    w.floor = area.endless ? 1 : 0; w.descend = null;
+    if (area.endless) G.save.maxFloor = Math.max(G.save.maxFloor || 0, 1);
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
       if (entryPortalFrom && G.AREAS[entryPortalFrom] && !G.AREAS[entryPortalFrom].safe) G.save.recallReturn = entryPortalFrom;
@@ -371,20 +373,42 @@
     }
     // 障礙物（戰鬥區隨機石塊，阻擋移動；避開出生點/傳送門/祭壇）
     if (!area.safe) {
-      const n = 6 + Math.floor(area.level / 8);
-      for (let i = 0; i < n; i++) {
-        let ox, oy, r, ok = false;
-        for (let t = 0; t < 30 && !ok; t++) {
-          r = rand(30, 55); ox = rand(80, area.w - 80); oy = rand(80, area.h - 80);
-          ok = dist(ox, oy, G.player.x, G.player.y) > 160;
-          if (ok && w.altar) ok = dist(ox, oy, w.altar.x, w.altar.y) > 140;
-          if (ok) for (const pt of area.portals) if (dist(ox, oy, pt.x, pt.y) < 150) { ok = false; break; }
-        }
-        if (ok) w.obstacles.push({ x: ox, y: oy, r });
-      }
+      genObstacles(area);
       const cnt = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive);
       for (let i = 0; i < cnt; i++) spawnEnemy(true);
     }
+    if (G.refreshHud) G.refreshHud();
+  };
+
+  function genObstacles(area) {
+    const w = G.world; w.obstacles = [];
+    const n = 6 + Math.floor(area.level / 8);
+    for (let i = 0; i < n; i++) {
+      let ox, oy, r, ok = false;
+      for (let t = 0; t < 30 && !ok; t++) {
+        r = rand(30, 55); ox = rand(80, area.w - 80); oy = rand(80, area.h - 80);
+        ok = dist(ox, oy, G.player.x, G.player.y) > 160;
+        if (ok && w.altar) ok = dist(ox, oy, w.altar.x, w.altar.y) > 140;
+        if (ok) for (const pt of area.portals) if (dist(ox, oy, pt.x, pt.y) < 150) { ok = false; break; }
+      }
+      if (ok) w.obstacles.push({ x: ox, y: oy, r });
+    }
+  }
+  G.genObstacles = genObstacles;
+
+  // 無盡：進入某一層（重生怪物/障礙，依層數縮放；每 5 層 Boss）
+  G.setupDepthsFloor = function (floor) {
+    const w = G.world, area = w.area;
+    w.floor = floor;
+    w.enemies = []; w.spawns = []; w.foeShots = []; w.bullets = []; w.casts = []; w.waves = []; w.flashes = [];
+    w.minions = []; w.orbs = []; w.coins = []; w.grounds = []; w.floats = []; w.particles = [];
+    w.bossSpawned = false; w.boss = null; w.killCount = 0; w.chest = null; w.altar = null; w.descend = null; w.magnetT = 0;
+    G.player.x = area.w / 2; G.player.y = area.h - 160;
+    genObstacles(area);
+    if (!G.save.maxFloor || floor > G.save.maxFloor) { G.save.maxFloor = floor; }
+    G.persist();
+    if (floor % 5 === 0) G.spawnDepthsBoss(floor);
+    else { const cnt = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive); for (let i = 0; i < cnt; i++) spawnEnemy(true); }
     if (G.refreshHud) G.refreshHud();
   };
 
@@ -412,42 +436,68 @@
   G.materializeEnemy = function (typeId, x, y) {
     const w = G.world, area = w.area;
     const t = G.ENEMIES[typeId]; if (!t) return;
-    const lvScale = 1 + area.level * 0.18;          // 經驗用
-    const hpScale = 1 + area.level * 0.15;          // 血量（避免後期太肉）
+    // 無盡：以層數提升有效等級
+    const eff = area.endless ? area.level + (w.floor || 1) * 3 : area.level;
+    const lvScale = 1 + eff * 0.18;          // 經驗用
+    const hpScale = 1 + eff * 0.15;          // 血量
+    // 精英怪：更強、外觀金光、保證大獎
+    const elite = !area.safe && Math.random() < (area.endless ? 0.16 : 0.09);
+    const em = elite ? 1 : 0;
     w.enemies.push({
-      typeId, name: t.name, ic: t.ic, x, y, r: t.r, color: t.color, lvl: area.level,
+      typeId, name: t.name, ic: t.ic, x, y, r: t.r * (1 + em * 0.35), color: t.color, lvl: eff,
+      elite, eliteMod: elite ? pick(["fast", "explode", "tough"]) : null,
       elem: typeId === "bomber" ? "fire" : (area.elem || null),
-      hp: Math.round(t.hp * hpScale), maxHp: Math.round(t.hp * hpScale),
-      dmg: Math.round(t.dmg * (1 + area.level * 0.16)), speed: t.speed,
-      baseSpeed: t.speed, xp: Math.round(t.xp * lvScale), gold: Math.round(t.gold * (1 + area.level * 0.22)),
+      hp: Math.round(t.hp * hpScale * (1 + em * 2.6)), maxHp: Math.round(t.hp * hpScale * (1 + em * 2.6)),
+      dmg: Math.round(t.dmg * (1 + eff * 0.16) * (1 + em * 0.45)), speed: t.speed * (elite && "fast" ? 1 : 1),
+      baseSpeed: t.speed * (elite ? 1.05 : 1), xp: Math.round(t.xp * lvScale * (1 + em * 3)), gold: Math.round(t.gold * (1 + eff * 0.22) * (1 + em * 4)),
       behavior: t.behavior, fireCd: rand(1.2, 2.6), touchCd: 0, hitFlash: 0,
       slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: false,
       cast: null, castCd: rand(0.6, 1.6), dashT: 0, dvx: 0, dvy: 0,
     });
+    const e = w.enemies[w.enemies.length - 1];
+    if (elite && e.eliteMod === "fast") e.baseSpeed = t.speed * 1.35;
   };
 
-  function spawnBoss(px, py) {
-    const w = G.world, area = w.area;
-    if (!area.boss || w.bossSpawned) return;
-    if (G.save.killedBoss[area.boss]) return;
-    const t = G.BOSSES[area.boss];
-    const lvScale = 1 + area.level * 0.1;
-    const bx = (px != null) ? px : area.bossAt.x, by = (py != null) ? py : area.bossAt.y;
-    const b = {
-      typeId: area.boss, name: t.name, ic: t.ic, x: bx, y: by, r: t.r, color: t.color, lvl: area.level, elem: area.elem || null,
-      hp: Math.round(t.hp * lvScale), maxHp: Math.round(t.hp * lvScale),
-      dmg: Math.round(t.dmg * (1 + area.level * 0.05)), speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
+  // Boss 建構器：bossId 指定、hp/dmg 縮放、tier 決定大招複雜度
+  function makeBoss(bossId, x, y, hp, dmg, tier, elem) {
+    const t = G.BOSSES[bossId];
+    return {
+      typeId: bossId, name: t.name, ic: t.ic, x, y, r: t.r, color: t.color, lvl: 0, elem: elem || null,
+      hp: Math.round(hp), maxHp: Math.round(hp),
+      dmg: Math.round(dmg), speed: t.speed, baseSpeed: t.speed, xp: t.xp, gold: t.gold,
       behavior: "boss", fireCd: 2, touchCd: 0, hitFlash: 0, slowT: 0, slowPct: 0, burnT: 0, burnDps: 0, stunT: 0, boss: true,
       cast: null, castCd: 0, dashT: 0, dvx: 0, dvy: 0,
       attacks: t.attacks || ["aimVolley"], ults: t.ults || ["novaRing"],
       emitters: [], ultState: "move", ultT: 0, ultDur: 0, ultActiveT: 0, ultMin: 1.2,
-      atkCd: rand(1.5, 2.6), ultCd: rand(7, 10),
-      tier: Math.max(0, Math.round(area.level / 7)), airborne: false,
+      atkCd: rand(1.5, 2.6), ultCd: rand(7, 10), tier: tier, airborne: false,
     };
+  }
+  function spawnBoss(px, py) {
+    const w = G.world, area = w.area;
+    if (!area.boss || w.bossSpawned) return;
+    if (G.save.killedBoss[area.boss]) return;
+    const t = G.BOSSES[area.boss], s = 1 + area.level * 0.1;
+    const b = makeBoss(area.boss, (px != null) ? px : area.bossAt.x, (py != null) ? py : area.bossAt.y,
+      t.hp * s, t.dmg * (1 + area.level * 0.05), Math.max(0, Math.round(area.level / 7)), area.elem);
+    b.lvl = area.level;
     w.enemies.push(b); w.boss = b; w.bossSpawned = true;
     G.toast("👑 " + t.name + " 出現了！");
   }
   G.spawnBoss = spawnBoss;
+
+  // 無盡 Boss：每 5 層一隻，輪替 7 個 Boss，依層數大幅縮放
+  G.spawnDepthsBoss = function (floor) {
+    const w = G.world, area = w.area;
+    const ids = Object.keys(G.BOSSES);
+    const t = G.BOSSES[ids[(Math.floor(floor / 5) - 1) % ids.length]];
+    const bossId = ids[(Math.floor(floor / 5) - 1) % ids.length];
+    const hp = t.hp * (0.6 + floor * 0.35);
+    const dmg = t.dmg * (0.8 + floor * 0.04);
+    const b = makeBoss(bossId, area.w / 2, 320, hp, dmg, Math.min(6, Math.floor(floor / 6)), area.elem);
+    b.lvl = area.level + floor * 3; b.depthsBoss = true;
+    w.enemies.push(b); w.boss = b; w.bossSpawned = true;
+    G.toast("👑 第 " + floor + " 層守關者：" + t.name);
+  };
 
   // ================= 浮動數字 / 粒子 =================
   G.addFloat = function (x, y, val, crit) {
@@ -567,13 +617,22 @@
     if (G.sfx) G.sfx(e.boss ? "boom" : "death");
     G.spawnCoins(e); // 金幣改為地上硬幣，需拾取
     G.spawnXpOrbs(e); // 經驗改為經驗球，需拾取
-    if (!e.boss) w.killCount = (w.killCount || 0) + 1; // 開啟祭壇所需擊殺數
+    if (!e.boss) w.killCount = (w.killCount || 0) + 1; // 開啟祭壇/層數所需擊殺數
     if (G.onKill) G.onKill(); // 連殺計數
     // 擊殺回血（傳奇）
     if (G.player.procs.killHeal > 0) G.healPlayer(G.player.maxHp * G.player.procs.killHeal / 100);
+    // 精英怪：保證掉大獎（額外裝備 + 金幣）
+    if (e.elite) {
+      const w2 = G.world, lvl = (e.lvl || 1);
+      G.dropGround(e.x + rand(-30, 30), e.y + rand(-20, 20), G.rollItem(lvl + 1, null, null, lvl + 8));
+      if (Math.random() < 0.5) G.dropGround(e.x, e.y, G.rollItem(lvl + 1, null, null, lvl + 12));
+      if (e.eliteMod === "explode") G.world.casts.push({ shape: "circle", ox: e.x, oy: e.y, radius: 95, dur: 0.6, dmg: e.dmg * 2, t: 0, fired: false, mode: "aoe", boss: false, arcHalf: 0, length: 0, width: 0, ang: 0 });
+    }
     // 掉落
     G.rollLoot(e);
-    if (e.boss) {
+    if (e.boss && e.depthsBoss) {
+      w.boss = null; // 無盡守關者：不計入 campaign、由層數流程處理
+    } else if (e.boss) {
       const first = !G.save.killedBoss[e.typeId];
       G.save.killedBoss[e.typeId] = true; w.boss = null;
       if (first) {

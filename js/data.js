@@ -117,7 +117,7 @@ G.AREAS = {
       { x:360, y:760, name:'鐵匠', ic:'🔨', label:'💬 交談', action:'blacksmith' },
       { x:640, y:760, name:'女神', ic:'🧚', label:'🙏 祈禱', action:'goddess' },
     ],
-    portals:[ {to:'plains', x:500, y:230, name:'翠綠原野'} ],
+    portals:[ {to:'plains', x:500, y:230, name:'翠綠原野'}, {to:'depths', x:250, y:250, name:'深淵之門', reqLevel:6} ],
   },
   plains: {
     name:'翠綠原野', w:2000, h:2000, bg:'#16301c', level:1,
@@ -153,6 +153,12 @@ G.AREAS = {
     name:'黑暗深淵', w:2800, h:2800, bg:'#140a1c', level:40, elem:'lightning',
     enemies:['rock','bird','bomber','monkey'], maxAlive:18, boss:'abyssBeast', bossAt:{x:1400,y:380},
     portals:[ {to:'storm', x:1400, y:2650, name:'返回高原'} ],
+  },
+  // 無盡挑戰：每層更難、掉落更好；每 5 層一個 Boss；記錄最高層
+  depths: {
+    name:'深淵之門', w:2200, h:2200, bg:'#0a0812', level:12, elem:'lightning', endless:true,
+    enemies:['slime','wolf','monkey','shrimp','crab','icecry','bird','rock','bomber'], maxAlive:16,
+    portals:[ {to:'town', x:1100, y:2050, name:'離開深淵'} ],
   },
 };
 

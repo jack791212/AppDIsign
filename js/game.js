@@ -97,6 +97,7 @@
   // 連續擊殺
   let combo = 0, comboTimer = 0, comboPulse = 0;
   const COMBO_TIME = 3, CHEST_KILLS = 20, KILLS_FOR_BOSS = 20;
+  function depthsQuota(floor) { return 12 + floor * 2; } // 無盡每層需擊殺數
   G.onKill = function () {
     combo++; comboTimer = COMBO_TIME; comboPulse = 1;
     if (combo >= CHEST_KILLS) { spawnChest(); combo = 0; }
@@ -813,6 +814,13 @@
         w.chest.age += dt;
         if (U.dist(p.x, p.y, w.chest.x, w.chest.y) < p.r + 22) { G.chestLoot(w.chest.x, w.chest.y, area); G.toast("🎁 開啟寶箱！"); if (G.sfx) G.sfx("level"); w.chest = null; }
       }
+      // 無盡挑戰：清層 → 出現下一層入口 → 站入下潛
+      if (area.endless) {
+        const bossFloor = w.floor % 5 === 0;
+        const cleared = bossFloor ? (w.bossSpawned && !w.boss) : ((w.killCount || 0) >= depthsQuota(w.floor));
+        if (cleared && !w.descend) { w.descend = { x: area.w / 2, y: area.h / 2, age: 0 }; G.toast("✅ 第 " + w.floor + " 層完成！站上 ⬇️ 前往下一層"); }
+        if (w.descend) { w.descend.age += dt; if (U.dist(p.x, p.y, w.descend.x, w.descend.y) < p.r + 28) { if (G.sfx) G.sfx("level"); G.setupDepthsFloor(w.floor + 1); } }
+      }
     }
 
     // 拾取地面道具（拾取範圍內自動吸取）
@@ -1017,6 +1025,15 @@
       ctx.globalAlpha = .35; ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
       ctx.font = "26px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("🎁", x, y); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
+    // 無盡：下一層入口
+    if (w.descend) {
+      const x = w.descend.x - cx, y = w.descend.y - cy;
+      const pulse = 0.5 + 0.3 * Math.sin(w.descend.age * 5);
+      ctx.globalAlpha = pulse; ctx.fillStyle = "#7af5d0"; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#bfffe8"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = "26px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⬇️", x, y);
+      ctx.font = "700 12px system-ui"; ctx.fillStyle = "#bfffe8"; ctx.fillText("下一層", x, y - 40); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    }
 
     // 地面裝備（畫在最上層，並有品質光束）
     for (const g of w.grounds) {
@@ -1082,6 +1099,8 @@
         const prog = U.clamp(e.ultT / e.ultDur, 0, 1);
         if (Math.sin(e.ultT * (6 + prog * 40)) > 0) bodyCol = "#ff2020";
       }
+      // 精英怪：金色光環
+      if (e.elite) { ctx.globalAlpha = 0.5 + 0.3 * Math.sin(w.time * 4); ctx.strokeStyle = "#ffd24a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, e.r + 5, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
       // 身體底色光暈（受擊/蓄力時更明顯）
       ctx.globalAlpha = e.hitFlash > 0 ? .6 : .3; ctx.fillStyle = bodyCol;
       ctx.beginPath(); ctx.arc(x, y, e.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
@@ -1345,18 +1364,27 @@
   // ---------- 稀有以上掉落的邊緣箭頭 ----------
   function drawStageStatus(area, cx, cy) {
     const w = G.world; if (area.safe) return;
-    const cleared = area.boss && G.save.killedBoss[area.boss];
-    let txt, col = "#ffd166";
-    if (cleared) { txt = "✅ 已通關！前往下一關"; col = "#7af5d0"; }
-    else if ((w.boss && w.boss.hp > 0) || w.bossSpawned) { txt = "⚔ 擊敗 " + (w.boss ? w.boss.name : "Boss"); col = "#ff8a8a"; }
-    else if ((w.killCount || 0) >= KILLS_FOR_BOSS) { txt = "前往祭壇 ✦ 召喚 Boss"; col = "#c9a0ff"; }
-    else { txt = "擊殺進度 " + (w.killCount || 0) + " / " + KILLS_FOR_BOSS + " 開啟祭壇"; }
+    let txt, col = "#ffd166", cleared = false;
+    if (area.endless) {
+      const bossFloor = w.floor % 5 === 0;
+      col = "#c9a0ff";
+      if (w.descend) { txt = "第 " + w.floor + " 層完成 · 站上 ⬇️ 下潛（最高 " + (G.save.maxFloor || 1) + " 層）"; col = "#7af5d0"; }
+      else if (bossFloor) { txt = "🕳️ 第 " + w.floor + " 層 · 擊敗守關者"; col = "#ff8a8a"; }
+      else txt = "🕳️ 第 " + w.floor + " 層 · 擊殺 " + (w.killCount || 0) + "/" + depthsQuota(w.floor);
+    } else {
+      cleared = area.boss && G.save.killedBoss[area.boss];
+      if (cleared) { txt = "✅ 已通關！前往下一關"; col = "#7af5d0"; }
+      else if ((w.boss && w.boss.hp > 0) || w.bossSpawned) { txt = "⚔ 擊敗 " + (w.boss ? w.boss.name : "Boss"); col = "#ff8a8a"; }
+      else if ((w.killCount || 0) >= KILLS_FOR_BOSS) { txt = "前往祭壇 ✦ 召喚 Boss"; col = "#c9a0ff"; }
+      else { txt = "擊殺進度 " + (w.killCount || 0) + " / " + KILLS_FOR_BOSS + " 開啟祭壇"; }
+    }
     ctx.save(); ctx.textAlign = "center"; ctx.font = "700 14px system-ui";
     const tw = ctx.measureText(txt).width + 22;
     ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(W / 2 - tw / 2, 94, tw, 23);
     ctx.fillStyle = col; ctx.textBaseline = "middle"; ctx.fillText(txt, W / 2, 106);
     ctx.restore(); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     if (cleared) { const nxt = area.portals.find(pt => pt.reqLevel); if (nxt) drawGuideArrow(nxt.x - cx, nxt.y - cy); }
+    if (area.endless && w.descend) drawEdgeArrow(w.descend.x - cx, w.descend.y - cy, "#7af5d0", "下一層");
   }
   function drawGuideArrow(sx, sy) { drawEdgeArrow(sx, sy, "#7af5d0", "下一關"); }
   function drawEdgeArrow(sx, sy, color, label) {
