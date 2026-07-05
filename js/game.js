@@ -97,7 +97,37 @@
   // 連續擊殺
   let combo = 0, comboTimer = 0, comboPulse = 0;
   const COMBO_TIME = 3, CHEST_KILLS = 20, KILLS_FOR_BOSS = 20;
-  function depthsQuota(floor) { return 12 + floor * 2; } // 無盡每層需擊殺數
+  function depthsQuota(floor) { return 12 + floor * 2; } // （保留相容）
+  // ---------- 深淵：房間 → 門 → 祝福（Hades 式）----------
+  const REWARD_IC = { boon: "🙏", heal: "❤️", gold: "💰", elite: "⚔️" };
+  const REWARD_NAME = { boon: "祝福", heal: "回血", gold: "金幣", elite: "精英裝備" };
+  function updateDepthsRoom(dt) {
+    const w = G.world, p = G.player, area = w.area;
+    const bossRoom = w.floor % 6 === 0;
+    const cleared = (w.enemies.length === 0 && w.spawns.length === 0) && (!bossRoom || (w.bossSpawned && !w.boss));
+    if (cleared && !w.roomCleared) {
+      w.roomCleared = true;
+      const y = 170, pool = bossRoom ? ["boon", "boon"] : ["boon", "heal", "gold", "elite"];
+      let r1 = bossRoom ? "boon" : U.pick(pool), r2 = U.pick(pool);
+      if (r2 === r1) r2 = r1 === "boon" ? "heal" : "boon";
+      w.doors = [{ x: area.w / 2 - 200, y, reward: r1 }, { x: area.w / 2 + 200, y, reward: r2 }];
+      if (G.sfx) G.sfx("level");
+      G.toast(bossRoom ? "👑 守關者倒下！選一道門" : "房間清空！選一道門前進");
+    }
+    if (w.doors) for (const d of w.doors) if (U.dist(p.x, p.y, d.x, d.y) < p.r + 30) { chooseDoor(d); break; }
+  }
+  function chooseDoor(d) {
+    const w = G.world; w.doors = null; w.roomCleared = false;
+    grantReward(d.reward, () => G.setupDepthsFloor(w.floor + 1));
+  }
+  function grantReward(type, next) {
+    const p = G.player, w = G.world;
+    if (type === "boon") { G.openBoonPicker(next); return; }
+    if (type === "heal") { G.healPlayer(p.maxHp * 0.4); G.toast("❤️ 回復生命"); }
+    else if (type === "gold") { const g = 50 + (w.floor || 1) * 20; G.save.gold += g; document.getElementById("coins").textContent = "🪙 " + G.save.gold; G.toast("💰 +" + g + " 金幣"); }
+    else if (type === "elite") { const lvl = (w.area.level || 12) + (w.floor || 1) * 3; G.addToBag(G.rollItem(lvl, null, null, lvl + 10)); }
+    next();
+  }
   G.onKill = function () {
     combo++; comboTimer = COMBO_TIME; comboPulse = 1;
     if (combo >= CHEST_KILLS) { spawnChest(); combo = 0; }
@@ -788,14 +818,16 @@
       if (f.life <= 0) w.floats.splice(i, 1);
     }
 
-    // 刷怪（密度提升：落後較多時一次補兩隻）
+    // 刷怪（一般區持續補怪；深淵為固定房間波次，不持續補）
     if (!area.safe) {
-      w.spawnTimer -= dt;
-      const alive = w.enemies.length + w.spawns.length;
-      if (w.spawnTimer <= 0 && alive < area.maxAlive) {
-        G.spawnEnemy();
-        if (alive < area.maxAlive - 2) G.spawnEnemy();
-        w.spawnTimer = U.rand(0.5, 1.1);
+      if (!area.endless) {
+        w.spawnTimer -= dt;
+        const alive = w.enemies.length + w.spawns.length;
+        if (w.spawnTimer <= 0 && alive < area.maxAlive) {
+          G.spawnEnemy();
+          if (alive < area.maxAlive - 2) G.spawnEnemy();
+          w.spawnTimer = U.rand(0.5, 1.1);
+        }
       }
       // 六芒星祭壇：站入填滿進度 → 延遲 2 秒後在祭壇召喚 Boss
       const al = w.altar;
@@ -814,13 +846,8 @@
         w.chest.age += dt;
         if (U.dist(p.x, p.y, w.chest.x, w.chest.y) < p.r + 22) { G.chestLoot(w.chest.x, w.chest.y, area); G.toast("🎁 開啟寶箱！"); if (G.sfx) G.sfx("level"); w.chest = null; }
       }
-      // 無盡挑戰：清層 → 出現下一層入口 → 站入下潛
-      if (area.endless) {
-        const bossFloor = w.floor % 5 === 0;
-        const cleared = bossFloor ? (w.bossSpawned && !w.boss) : ((w.killCount || 0) >= depthsQuota(w.floor));
-        if (cleared && !w.descend) { w.descend = { x: area.w / 2, y: area.h / 2, age: 0 }; G.toast("✅ 第 " + w.floor + " 層完成！站上 ⬇️ 前往下一層"); }
-        if (w.descend) { w.descend.age += dt; if (U.dist(p.x, p.y, w.descend.x, w.descend.y) < p.r + 28) { if (G.sfx) G.sfx("level"); G.setupDepthsFloor(w.floor + 1); } }
-      }
+      // 深淵：清空房間 → 出現 2 道門（含獎勵預覽）→ 走進門選路線
+      if (area.endless) updateDepthsRoom(dt);
     }
 
     // 拾取地面道具（拾取範圍內自動吸取）
@@ -1025,14 +1052,15 @@
       ctx.globalAlpha = .35; ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
       ctx.font = "26px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("🎁", x, y); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
-    // 無盡：下一層入口
-    if (w.descend) {
-      const x = w.descend.x - cx, y = w.descend.y - cy;
-      const pulse = 0.5 + 0.3 * Math.sin(w.descend.age * 5);
-      ctx.globalAlpha = pulse; ctx.fillStyle = "#7af5d0"; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      ctx.strokeStyle = "#bfffe8"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.stroke();
-      ctx.font = "26px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⬇️", x, y);
-      ctx.font = "700 12px system-ui"; ctx.fillStyle = "#bfffe8"; ctx.fillText("下一層", x, y - 40); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    // 深淵：選擇之門（門上顯示下一房獎勵）
+    if (w.doors) for (const d of w.doors) {
+      const x = d.x - cx, y = d.y - cy, near = U.dist(p.x, p.y, d.x, d.y) < p.r + 60;
+      ctx.globalAlpha = near ? .9 : .55; ctx.fillStyle = "#2a2242"; ctx.fillRect(x - 34, y - 46, 68, 78);
+      ctx.strokeStyle = near ? "#ffd166" : "#7a6bb0"; ctx.lineWidth = 3; ctx.strokeRect(x - 34, y - 46, 68, 78);
+      ctx.globalAlpha = 1; ctx.font = "30px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(REWARD_IC[d.reward] || "❓", x, y - 6);
+      ctx.font = "700 12px system-ui"; ctx.fillStyle = "#fff"; ctx.fillText(REWARD_NAME[d.reward] || "", x, y + 22);
+      ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
     }
 
     // 地面裝備（畫在最上層，並有品質光束）
@@ -1366,11 +1394,11 @@
     const w = G.world; if (area.safe) return;
     let txt, col = "#ffd166", cleared = false;
     if (area.endless) {
-      const bossFloor = w.floor % 5 === 0;
+      const bossRoom = w.floor % 6 === 0, nb = (G.run.blessings || []).length;
       col = "#c9a0ff";
-      if (w.descend) { txt = "第 " + w.floor + " 層完成 · 站上 ⬇️ 下潛（最高 " + (G.save.maxFloor || 1) + " 層）"; col = "#7af5d0"; }
-      else if (bossFloor) { txt = "🕳️ 第 " + w.floor + " 層 · 擊敗守關者"; col = "#ff8a8a"; }
-      else txt = "🕳️ 第 " + w.floor + " 層 · 擊殺 " + (w.killCount || 0) + "/" + depthsQuota(w.floor);
+      if (w.doors) { txt = "第 " + w.floor + " 房完成 · 選一道門（祝福 " + nb + "）"; col = "#7af5d0"; }
+      else if (bossRoom) { txt = "👑 第 " + w.floor + " 房 · 擊敗守關者（祝福 " + nb + "）"; col = "#ff8a8a"; }
+      else txt = "🕳️ 第 " + w.floor + " 房 · 清光敵人（最高 " + (G.save.maxFloor || 1) + "）";
     } else {
       cleared = area.boss && G.save.killedBoss[area.boss];
       if (cleared) { txt = "✅ 已通關！前往下一關"; col = "#7af5d0"; }
@@ -1384,7 +1412,7 @@
     ctx.fillStyle = col; ctx.textBaseline = "middle"; ctx.fillText(txt, W / 2, 106);
     ctx.restore(); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     if (cleared) { const nxt = area.portals.find(pt => pt.reqLevel); if (nxt) drawGuideArrow(nxt.x - cx, nxt.y - cy); }
-    if (area.endless && w.descend) drawEdgeArrow(w.descend.x - cx, w.descend.y - cy, "#7af5d0", "下一層");
+    if (area.endless && w.doors) for (const d of w.doors) drawEdgeArrow(d.x - cx, d.y - cy, "#7af5d0", REWARD_IC[d.reward] || "門");
   }
   function drawGuideArrow(sx, sy) { drawEdgeArrow(sx, sy, "#7af5d0", "下一關"); }
   function drawEdgeArrow(sx, sy, color, label) {
@@ -1425,6 +1453,7 @@
   // ---------- 死亡 ----------
   G.onPlayerDeath = function () {
     dead = true; recalling = false;
+    if (G.run && G.run.active) G.endRun(); // Run 失敗，祝福歸零
     const lost = G.applyDeathPenalty ? G.applyDeathPenalty() : 0;
     const msg = document.getElementById("deathMsg");
     if (msg) msg.innerHTML = "等級、裝備與戰利品都會保留。<br>損失 🪙<b>" + lost + "</b>（20% 金幣），回到城鎮重整旗鼓吧！";

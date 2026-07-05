@@ -264,6 +264,25 @@
   G.closeDialogue = function () { dlg = null; $("dlgPanel").classList.remove("show"); };
   $("dlgPanel").addEventListener("click", (e) => { if (!e.target.closest("#dlgOptions")) G.dlgAdvance(); });
 
+  // ---------- 祝福三選一（深淵 Run）----------
+  G.openBoonPicker = function (next) {
+    const gods = Object.keys(G.BLESSINGS);
+    const g = G.BLESSINGS[gods[Math.floor(Math.random() * gods.length)]];
+    const owned = new Set(G.run.blessings);
+    let boons = g.boons.filter((b) => !owned.has(b.id));
+    if (boons.length < 3) boons = g.boons.slice();
+    boons = boons.slice(0, 3);
+    $("boonTitle").innerHTML = `<span style="color:${g.color}">${g.ic} ${g.name}</span> 的祝福（三選一）`;
+    const box = $("boonCards"); box.innerHTML = "";
+    for (const b of boons) {
+      const d = document.createElement("div"); d.className = "card";
+      d.innerHTML = `<div class="ico" style="color:${g.color}">${g.ic}</div><div class="txt"><div class="name">${b.name}</div><div class="desc">${b.desc}</div></div>`;
+      d.onclick = () => { $("boonPanel").classList.remove("show"); G.addBoon(b.id); if (next) next(); };
+      box.appendChild(d);
+    }
+    $("boonPanel").classList.add("show");
+  };
+
   // 鐵匠對話入口
   G.openBlacksmith = function () {
     G.startDialogue({

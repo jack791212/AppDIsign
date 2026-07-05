@@ -232,3 +232,41 @@ G.QIGONG = {
     { name:'永凍',   proc:'freezeChance',per:14,desc:'命中 14% 機率定身敵人' },
   ]},
 };
+
+// ============ 祝福（Roguelite Run 專用 build，深淵之門）============
+// 神祇主題，進祝福房三選一；可疊加；離開/死亡歸零。stat 或 proc + amt。
+G.BLESSINGS = {
+  ignis:  { name:'炎神', ic:'🔥', color:'#ff6a3a', boons:[
+    { id:'ig1', name:'烈焰纏身', proc:'burn',     amt:30, desc:'命中燃燒 +30%' },
+    { id:'ig2', name:'戰意',     stat:'dmgPct',   amt:20, desc:'攻擊力 +20%' },
+    { id:'ig3', name:'爆裂核',   proc:'critboom', amt:35, desc:'暴擊爆炸 +35%' },
+  ]},
+  fulgor: { name:'雷神', ic:'⚡', color:'#cfa0ff', boons:[
+    { id:'fu1', name:'感電',     proc:'chain',    amt:28, desc:'連鎖閃電 +28%' },
+    { id:'fu2', name:'疾馳',     stat:'atkSpdPct',amt:18, desc:'攻擊速度 +18%' },
+    { id:'fu3', name:'風行',     stat:'movePct',  amt:15, desc:'移動速度 +15%' },
+  ]},
+  glacia: { name:'冰神', ic:'❄️', color:'#7fd0ff', boons:[
+    { id:'gl1', name:'霜縛',     proc:'frost',    amt:35, desc:'命中減速 +35%' },
+    { id:'gl2', name:'堅冰之軀', stat:'hp',       amt:90, desc:'最大生命 +90' },
+    { id:'gl3', name:'冰甲',     stat:'armorFlat',amt:12, desc:'護甲 +12' },
+  ]},
+  bellum: { name:'劍神', ic:'🗡️', color:'#ff5470', boons:[
+    { id:'be1', name:'致命',     stat:'critPct',  amt:14, desc:'暴擊率 +14%' },
+    { id:'be2', name:'會心一擊', stat:'critDmgPct',amt:45,desc:'暴擊傷害 +45%' },
+    { id:'be3', name:'旋風',     proc:'whirl',    amt:1,  desc:'獲得旋風斬（近戰）' },
+  ]},
+  ventus: { name:'風神', ic:'🍃', color:'#7af5d0', boons:[
+    { id:'ve1', name:'多重',     stat:'projectiles',amt:1, desc:'+1 投射物' },
+    { id:'ve2', name:'貫穿',     stat:'pierce',   amt:2,  desc:'穿透 +2' },
+    { id:'ve3', name:'爆裂彈',   proc:'explosive',amt:40, desc:'命中範圍爆炸 +40%' },
+  ]},
+  vita:   { name:'生命神', ic:'💧', color:'#5fd98a', boons:[
+    { id:'vi1', name:'汲取',     proc:'lifesteal',amt:8,  desc:'吸血 +8%' },
+    { id:'vi2', name:'再生',     proc:'regen',    amt:5,  desc:'每秒回血 +5' },
+    { id:'vi3', name:'荊棘',     proc:'thorns',   amt:40, desc:'受擊反傷 +40%' },
+  ]},
+};
+// 攤平成 id -> boon
+G.ALL_BOONS = {};
+for (const gid in G.BLESSINGS) for (const b of G.BLESSINGS[gid].boons) { b.god = gid; b.godName = G.BLESSINGS[gid].name; b.godIc = G.BLESSINGS[gid].ic; b.godColor = G.BLESSINGS[gid].color; G.ALL_BOONS[b.id] = b; }

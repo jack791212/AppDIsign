@@ -238,6 +238,11 @@
     // Boss 首殺戰利品：永久加成（長期目標）
     const trophies = Object.values(s.killedBoss || {}).filter(Boolean).length;
     if (trophies) { dmgPct += trophies * 3; hpFlat += trophies * 20; }
+    // 祝福（Run 內暫時 build）
+    if (G.run && G.run.active) for (const bid of G.run.blessings) {
+      const b = G.ALL_BOONS[bid]; if (!b) continue;
+      if (b.stat) addStat(b.stat, b.amt); else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + b.amt;
+    }
 
     // 武器類型：決定攻擊方式與倍率
     const wpn = s.equipped.weapon;
@@ -276,6 +281,12 @@
     const p = G.player;
     p.hp = Math.min(p.maxHp, p.hp + amt);
   };
+
+  // ================= 祝福 Run（深淵之門）=================
+  G.run = { active: false, room: 0, blessings: [] };
+  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.blessings = []; };
+  G.endRun = function () { if (!G.run.active) return; G.run.active = false; G.run.blessings = []; G.computeStats(); };
+  G.addBoon = function (id) { const b = G.ALL_BOONS[id]; if (!b) return; G.run.blessings.push(id); G.computeStats(); G.toast("🙏 獲得祝福：" + b.godIc + b.name); };
 
   // ================= 等級 / 經驗 =================
   G.xpForLevel = (lv) => Math.floor(12 * Math.pow(lv, 1.4)) + 15;
@@ -328,18 +339,21 @@
   };
 
   // ================= 世界 / 區域 =================
-  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, magnetT: 0, floor: 0, descend: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
+  G.world = { areaId: null, area: null, enemies: [], bullets: [], foeShots: [], particles: [], grounds: [], floats: [], swings: [], minions: [], casts: [], waves: [], spawns: [], orbs: [], coins: [], flashes: [], obstacles: [], extraPortals: [], altar: null, chest: null, killCount: 0, magnetT: 0, floor: 0, descend: null, roomCleared: false, doors: null, cam: { x: 0, y: 0 }, spawnTimer: 0, summonTimer: 0, bossSpawned: false, boss: null, time: 0 };
 
   G.enterArea = function (areaId, entryPortalFrom) {
     const w = G.world;
     if (!G.AREAS[areaId]) areaId = "town"; // 舊存檔可能指向已移除的區域
+    // 進入深淵＝開始 Run；離開深淵＝結束 Run（祝福歸零）
+    if (areaId === "depths" && !G.run.active) G.startRun();
+    if (areaId !== "depths" && G.run.active) G.endRun();
     const area = G.AREAS[areaId];
     w.areaId = areaId; w.area = area;
     w.enemies = []; w.bullets = []; w.foeShots = []; w.particles = []; w.grounds = []; w.floats = [];
     w.swings = []; w.minions = []; w.casts = []; w.waves = []; w.spawns = []; w.orbs = []; w.coins = []; w.flashes = []; w.extraPortals = []; w.obstacles = []; w.summonTimer = 1;
     w.spawnTimer = 1; w.bossSpawned = false; w.boss = null; w.time = 0; w.chest = null; w.killCount = 0; w.magnetT = 0;
-    w.floor = area.endless ? 1 : 0; w.descend = null;
-    if (area.endless) G.save.maxFloor = Math.max(G.save.maxFloor || 0, 1);
+    w.floor = area.endless ? 1 : 0; w.descend = null; w.roomCleared = false; w.doors = null;
+    if (area.endless) { G.run.room = 1; G.save.maxFloor = Math.max(G.save.maxFloor || 0, 1); }
     // 進入城鎮：記住來源並建立「回歸傳送門」可傳回原本的地方
     if (areaId === "town") {
       if (entryPortalFrom && G.AREAS[entryPortalFrom] && !G.AREAS[entryPortalFrom].safe) G.save.recallReturn = entryPortalFrom;
@@ -372,7 +386,9 @@
       w.altar = { x: ax, y: ay, r: 85, progress: 0, summoning: false, delay: 0 };
     }
     // 障礙物（戰鬥區隨機石塊，阻擋移動；避開出生點/傳送門/祭壇）
-    if (!area.safe) {
+    if (area.endless) {
+      G.setupDepthsFloor(1); // 深淵：以房間流程開始第 1 房
+    } else if (!area.safe) {
       genObstacles(area);
       const cnt = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive);
       for (let i = 0; i < cnt; i++) spawnEnemy(true);
@@ -403,12 +419,14 @@
     w.enemies = []; w.spawns = []; w.foeShots = []; w.bullets = []; w.casts = []; w.waves = []; w.flashes = [];
     w.minions = []; w.orbs = []; w.coins = []; w.grounds = []; w.floats = []; w.particles = [];
     w.bossSpawned = false; w.boss = null; w.killCount = 0; w.chest = null; w.altar = null; w.descend = null; w.magnetT = 0;
+    w.roomCleared = false; w.doors = null;
     G.player.x = area.w / 2; G.player.y = area.h - 160;
     genObstacles(area);
+    G.run.room = floor;
     if (!G.save.maxFloor || floor > G.save.maxFloor) { G.save.maxFloor = floor; }
     G.persist();
-    if (floor % 5 === 0) G.spawnDepthsBoss(floor);
-    else { const cnt = Math.min(Math.ceil(area.maxAlive * 0.6), area.maxAlive); for (let i = 0; i < cnt; i++) spawnEnemy(true); }
+    if (floor % 6 === 0) G.spawnDepthsBoss(floor); // 每 6 房一個守關者
+    else { const cnt = Math.min(area.maxAlive, 6 + Math.floor(floor * 0.7)); for (let i = 0; i < cnt; i++) spawnEnemy(true); }
     if (G.refreshHud) G.refreshHud();
   };
 
@@ -489,8 +507,8 @@
   G.spawnDepthsBoss = function (floor) {
     const w = G.world, area = w.area;
     const ids = Object.keys(G.BOSSES);
-    const t = G.BOSSES[ids[(Math.floor(floor / 5) - 1) % ids.length]];
-    const bossId = ids[(Math.floor(floor / 5) - 1) % ids.length];
+    const bossId = ids[(Math.floor(floor / 6) - 1) % ids.length];
+    const t = G.BOSSES[bossId];
     const hp = t.hp * (0.6 + floor * 0.35);
     const dmg = t.dmg * (0.8 + floor * 0.04);
     const b = makeBoss(bossId, area.w / 2, 320, hp, dmg, Math.min(6, Math.floor(floor / 6)), area.elem);
