@@ -271,6 +271,15 @@ G.BLESSINGS = {
 G.ALL_BOONS = {};
 for (const gid in G.BLESSINGS) for (const b of G.BLESSINGS[gid].boons) { b.god = gid; b.godName = G.BLESSINGS[gid].name; b.godIc = G.BLESSINGS[gid].ic; b.godColor = G.BLESSINGS[gid].color; G.ALL_BOONS[b.id] = b; }
 
+// 二重祝福（湊齊兩位神的祝福才會出現，強力 combo）
+G.DUOS = [
+  { id:'duo_stormfire', gods:['ignis','fulgor'],  name:'雷炎爆發', godIc:'🌩️', godColor:'#ff8a4a', desc:'燃燒+22%、連鎖+22%', effects:[{proc:'burn',amt:22},{proc:'chain',amt:22}] },
+  { id:'duo_frostblade', gods:['glacia','bellum'], name:'絕對凍刃', godIc:'🗡️', godColor:'#9fd8ff', desc:'減速+30%、暴傷+45%', effects:[{proc:'frost',amt:30},{stat:'critDmgPct',amt:45}] },
+  { id:'duo_lifewind',  gods:['ventus','vita'],    name:'生命疾風', godIc:'🍃', godColor:'#8ff0c0', desc:'+1投射物、吸血+8%', effects:[{stat:'projectiles',amt:1},{proc:'lifesteal',amt:8}] },
+  { id:'duo_frostbolt', gods:['fulgor','glacia'],  name:'冰雷風暴', godIc:'❄️', godColor:'#a8c8ff', desc:'連鎖+20%、減速+25%、移速+10%', effects:[{proc:'chain',amt:20},{proc:'frost',amt:25},{stat:'movePct',amt:10}] },
+];
+for (const d of G.DUOS) { d.duo = true; d.godName = "二重祝福"; G.ALL_BOONS[d.id] = d; }
+
 // ============ 深淵之鏡（永久被動，深淵結晶購買）============
 // 每次深淵 Run 結束依到達房數獲得結晶；花結晶點永久加成（always 生效）。
 G.MIRROR = [

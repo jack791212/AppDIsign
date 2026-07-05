@@ -99,17 +99,22 @@
   const COMBO_TIME = 3, CHEST_KILLS = 20, KILLS_FOR_BOSS = 20;
   function depthsQuota(floor) { return 12 + floor * 2; } // （保留相容）
   // ---------- 深淵：房間 → 門 → 祝福（Hades 式）----------
-  const REWARD_IC = { boon: "🙏", heal: "❤️", gold: "💰", elite: "⚔️" };
-  const REWARD_NAME = { boon: "祝福", heal: "回血", gold: "金幣", elite: "精英裝備" };
+  const REWARD_IC = { boon: "🙏", heal: "❤️", gold: "💰", elite: "⚔️", shop: "🏪", pom: "⬆️", chaos: "🌀" };
+  const REWARD_NAME = { boon: "祝福", heal: "回血", gold: "金幣", elite: "精英裝備", shop: "商店", pom: "祝福升級", chaos: "混沌" };
   function updateDepthsRoom(dt) {
     const w = G.world, p = G.player, area = w.area;
     const bossRoom = w.floor % 6 === 0;
     const cleared = (w.enemies.length === 0 && w.spawns.length === 0) && (!bossRoom || (w.bossSpawned && !w.boss));
     if (cleared && !w.roomCleared) {
       w.roomCleared = true;
-      const y = 170, pool = bossRoom ? ["boon", "boon"] : ["boon", "heal", "gold", "elite"];
+      const y = 170;
+      // 獎勵池：依情境動態組成（升級需已有祝福；商店需金幣；混沌無詛咒時才出現）
+      const pool = ["boon", "heal", "gold", "elite"];
+      if (G.run.blessings.length > 0) pool.push("pom");
+      if (G.save.gold >= 60) pool.push("shop");
+      if (!(G.run.curse && G.run.curse.rooms > 0)) pool.push("chaos");
       let r1 = bossRoom ? "boon" : U.pick(pool), r2 = U.pick(pool);
-      if (r2 === r1) r2 = r1 === "boon" ? "heal" : "boon";
+      if (r2 === r1) { const alt = pool.filter(x => x !== r1); r2 = alt.length ? U.pick(alt) : (r1 === "boon" ? "heal" : "boon"); }
       w.doors = [{ x: area.w / 2 - 200, y, reward: r1 }, { x: area.w / 2 + 200, y, reward: r2 }];
       if (G.sfx) G.sfx("level");
       G.toast(bossRoom ? "👑 守關者倒下！選一道門" : "房間清空！選一道門前進");
@@ -123,6 +128,9 @@
   function grantReward(type, next) {
     const p = G.player, w = G.world;
     if (type === "boon") { G.openBoonPicker(next); return; }
+    if (type === "chaos") { G.openBoonPicker(next, { chaos: true }); return; }
+    if (type === "pom") { G.openPomPicker(next); return; }
+    if (type === "shop") { G.openShopRoom(next); return; }
     if (type === "heal") { G.healPlayer(p.maxHp * 0.4); G.toast("❤️ 回復生命"); }
     else if (type === "gold") { const g = 50 + (w.floor || 1) * 20; G.save.gold += g; document.getElementById("coins").textContent = "🪙 " + G.save.gold; G.toast("💰 +" + g + " 金幣"); }
     else if (type === "elite") { const lvl = (w.area.level || 12) + (w.floor || 1) * 3; G.addToBag(G.rollItem(lvl, null, null, lvl + 10)); }
