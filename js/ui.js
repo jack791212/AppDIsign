@@ -291,15 +291,22 @@
     $("boonTitle").innerHTML = chaos
       ? `<span style="color:#c77dff">🌀 混沌祝福</span>（更強・背負詛咒）`
       : `<span style="color:${g.color}">${g.ic} ${g.name}</span> 的祝福（三選一）`;
+    const floor = (G.world && G.world.floor) || 1;
     const box = $("boonCards"); box.innerHTML = "";
     for (const b of cards) {
       const col = b.godColor || g.color, ic = b.godIc || g.ic;
+      // 每張卡擲稀有度（混沌門保底稀有↑）
+      let tier = G.rollBoonRarity(floor, chaos ? 25 : 0);
+      if (chaos && tier < 1) tier = 1;
+      const rr = G.BOON_RARITY[tier];
       const d = document.createElement("div"); d.className = "card";
-      const tag = b.duo ? `<span style="color:#ffd479;font-size:11px"> ✦二重</span>` : (chaos ? `<span style="color:#c77dff;font-size:11px"> ×2</span>` : "");
-      d.innerHTML = `<div class="ico" style="color:${col}">${ic}</div><div class="txt"><div class="name">${b.name}${tag}</div><div class="desc">${b.desc}</div></div>`;
+      const dtag = b.duo ? `<span style="color:#ffd479;font-size:11px"> ✦二重</span>` : "";
+      const rtag = tier > 0 ? `<span style="color:${rr.color};font-size:11px;font-weight:700"> ${rr.name}×${rr.mult}</span>` : "";
+      d.style.borderColor = tier > 0 ? rr.color : "";
+      d.innerHTML = `<div class="ico" style="color:${col}">${ic}</div><div class="txt"><div class="name">${b.name}${dtag}${rtag}</div><div class="desc">${b.desc}</div></div>`;
       d.onclick = () => {
         $("boonPanel").classList.remove("show");
-        G.addBoon(b.id, chaos);
+        G.addBoon(b.id, chaos, tier);
         if (chaos) { G.run.boonLv[b.id] = (G.run.boonLv[b.id] || 1) + 1; G.computeStats(); } // 混沌：雙倍效果
         if (next) next();
       };
@@ -320,8 +327,10 @@
     for (const id of pick) {
       const b = G.ALL_BOONS[id]; if (!b) continue;
       const lv = (G.run.boonLv[id] || 1);
+      const rt = (G.run.boonRarity[id] || 0), rr = G.BOON_RARITY[rt];
+      const rtag = rt > 0 ? `<span style="color:${rr.color};font-size:11px"> ${rr.name}</span>` : "";
       const d = document.createElement("div"); d.className = "card";
-      d.innerHTML = `<div class="ico" style="color:${b.godColor}">${b.godIc}</div><div class="txt"><div class="name">${b.name} <span style="color:#7af5d0;font-size:11px">Lv${lv}→${lv + 1}</span></div><div class="desc">${b.desc}</div></div>`;
+      d.innerHTML = `<div class="ico" style="color:${b.godColor}">${b.godIc}</div><div class="txt"><div class="name">${b.name}${rtag} <span style="color:#7af5d0;font-size:11px">Lv${lv}→${lv + 1}</span></div><div class="desc">${b.desc}</div></div>`;
       d.onclick = () => { $("boonPanel").classList.remove("show"); G.upgradeBoon(id); if (next) next(); };
       box.appendChild(d);
     }
@@ -340,7 +349,11 @@
     const avail = gg.boons.filter((b) => !owned.has(b.id));
     if (avail.length) boonOffer = avail[Math.floor(Math.random() * avail.length)];
     const offers = [];
-    if (boonOffer) offers.push({ ic: boonOffer.godIc, name: "祝福：" + boonOffer.name, desc: boonOffer.desc, cost: 120 + floor * 15, buy: () => G.addBoon(boonOffer.id) });
+    if (boonOffer) {
+      const bt = G.rollBoonRarity(floor, 10), br = G.BOON_RARITY[bt];
+      const rlabel = bt > 0 ? "（" + br.name + "×" + br.mult + "）" : "";
+      offers.push({ ic: boonOffer.godIc, name: "祝福：" + boonOffer.name + rlabel, desc: boonOffer.desc, cost: 120 + floor * 15 + bt * 40, buy: () => G.addBoon(boonOffer.id, false, bt) });
+    }
     offers.push({ ic: "❤️", name: "全滿回復", desc: "生命完全回復", cost: 80 + floor * 8, buy: () => { G.player.hp = G.player.maxHp; if (G.sfx) G.sfx("level"); } });
     offers.push({ ic: "⚔️", name: "精英裝備", desc: "獲得一件高階裝備", cost: 150 + floor * 18, buy: () => { const lvl = (w.area.level || 12) + floor * 3; G.addToBag(G.rollItem(lvl, null, null, lvl + 10)); } });
     const render = () => {

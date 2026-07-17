@@ -261,10 +261,15 @@
     if (G.run && G.run.active) {
       for (const bid of G.run.blessings) {
         const b = G.ALL_BOONS[bid]; if (!b) continue;
-        const lv = (G.run.boonLv && G.run.boonLv[bid]) || 1; // 祝福升級（pom）疊乘
-        if (b.effects) { for (const e of b.effects) { if (e.stat) addStat(e.stat, e.amt * lv); else if (e.proc) procs[e.proc] = (procs[e.proc] || 0) + e.amt * lv; } }
-        else if (b.stat) addStat(b.stat, b.amt * lv);
-        else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + b.amt * lv;
+        const lv = (G.run.boonLv && G.run.boonLv[bid]) || 1;                 // 祝福升級（pom）疊乘
+        const rTier = (G.run.boonRarity && G.run.boonRarity[bid]) || 0;      // 祝福稀有度倍率
+        const rMult = (G.BOON_RARITY[rTier] || G.BOON_RARITY[0]).mult;
+        const mult = lv * rMult;
+        // +投射物/穿透這類整數效果只吃升級不吃稀有小數，避免 1.5 支箭
+        const amtOf = (e) => ((e.stat === "projectiles" || e.stat === "pierce") ? e.amt * lv : e.amt * mult);
+        if (b.effects) { for (const e of b.effects) { if (e.stat) addStat(e.stat, amtOf(e)); else if (e.proc) procs[e.proc] = (procs[e.proc] || 0) + amtOf(e); } }
+        else if (b.stat) addStat(b.stat, amtOf(b));
+        else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + amtOf(b);
       }
       // 混沌詛咒（暫時負面）
       if (G.run.curse && G.run.curse.rooms > 0) dmgPct -= 25;
@@ -320,20 +325,25 @@
   };
 
   // ================= 祝福 Run（深淵之門）=================
-  G.run = { active: false, room: 0, maxRoom: 0, blessings: [], boonLv: {}, curse: null };
-  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.maxRoom = 0; G.run.blessings = []; G.run.boonLv = {}; G.run.curse = null; };
+  G.run = { active: false, room: 0, maxRoom: 0, blessings: [], boonLv: {}, boonRarity: {}, curse: null };
+  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.maxRoom = 0; G.run.blessings = []; G.run.boonLv = {}; G.run.boonRarity = {}; G.run.curse = null; };
   G.endRun = function () {
     if (!G.run.active) return;
     const gained = Math.floor((G.run.maxRoom || 1) * 1.5);
     if (gained > 0) { G.save.crystals = (G.save.crystals || 0) + gained; G.toast("🔮 深淵結束：獲得 💎" + gained + " 深淵結晶"); }
-    G.run.active = false; G.run.blessings = []; G.run.boonLv = {}; G.run.curse = null; G.persist(); G.computeStats(); if (G.refreshHud) G.refreshHud();
+    G.run.active = false; G.run.blessings = []; G.run.boonLv = {}; G.run.boonRarity = {}; G.run.curse = null; G.persist(); G.computeStats(); if (G.refreshHud) G.refreshHud();
   };
-  G.addBoon = function (id, chaos) {
+  // rarity：稀有度 tier（0..3），未提供則預設普通
+  G.addBoon = function (id, chaos, rarity) {
     const b = G.ALL_BOONS[id]; if (!b) return;
     if (!G.run.blessings.includes(id)) G.run.blessings.push(id);
+    const tier = rarity || 0;
+    // 保留較高稀有度（重複拿同一祝福時取好的）
+    if (tier > (G.run.boonRarity[id] || 0)) G.run.boonRarity[id] = tier;
     if (chaos) G.run.curse = { rooms: 2 }; // 混沌門：獲得強化祝福但背負 2 房詛咒
     G.computeStats();
-    G.toast((chaos ? "🌀 混沌祝福：" : "🙏 獲得祝福：") + b.godIc + b.name);
+    const rn = (G.BOON_RARITY[tier] || G.BOON_RARITY[0]);
+    G.toast((chaos ? "🌀 混沌祝福：" : "🙏 獲得祝福：") + b.godIc + b.name + (tier > 0 ? "（" + rn.name + "）" : ""));
   };
   // 祝福升級（pom）：把已有祝福強化一級（效果 ×等級）
   G.upgradeBoon = function (id) {

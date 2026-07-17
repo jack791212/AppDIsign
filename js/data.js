@@ -280,6 +280,26 @@ G.DUOS = [
 ];
 for (const d of G.DUOS) { d.duo = true; d.godName = "二重祝福"; G.ALL_BOONS[d.id] = d; }
 
+// 祝福稀有度：擲出的稀有度直接放大祝福數值（Hades 式）。tier 0..3
+G.BOON_RARITY = [
+  { key:'common',  name:'普通', mult:1.0, color:'#c9c4d8' },
+  { key:'rare',    name:'稀有', mult:1.5, color:'#5ea8ff' },
+  { key:'epic',    name:'史詩', mult:2.1, color:'#b96bff' },
+  { key:'heroic',  name:'傳奇', mult:3.0, color:'#ffb038' },
+];
+// 依層數（與額外幸運）擲稀有度 tier；層數越深越容易出高階（機率單調上移）
+G.rollBoonRarity = function (floor, luck) {
+  const f = Math.min(1, ((floor || 1) - 1) * 0.03 + (luck || 0) / 100); // 幸運係數 0..1
+  const heroic = 0.03 + f * 0.12;
+  const epic = 0.09 + f * 0.15;
+  const rare = 0.26 + f * 0.10;
+  const r = Math.random();
+  if (r < heroic) return 3;            // 傳奇
+  if (r < heroic + epic) return 2;     // 史詩
+  if (r < heroic + epic + rare) return 1; // 稀有
+  return 0;                            // 普通
+};
+
 // ============ 深淵之鏡（永久被動，深淵結晶購買）============
 // 每次深淵 Run 結束依到達房數獲得結晶；花結晶點永久加成（always 生效）。
 G.MIRROR = [
