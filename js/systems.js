@@ -258,9 +258,16 @@
     const trophies = Object.values(s.killedBoss || {}).filter(Boolean).length;
     if (trophies) { dmgPct += trophies * 3; hpFlat += trophies * 20; }
     // 祝福（Run 內暫時 build）
-    if (G.run && G.run.active) for (const bid of G.run.blessings) {
-      const b = G.ALL_BOONS[bid]; if (!b) continue;
-      if (b.stat) addStat(b.stat, b.amt); else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + b.amt;
+    if (G.run && G.run.active) {
+      for (const bid of G.run.blessings) {
+        const b = G.ALL_BOONS[bid]; if (!b) continue;
+        const lv = (G.run.boonLv && G.run.boonLv[bid]) || 1; // 祝福升級（pom）疊乘
+        if (b.effects) { for (const e of b.effects) { if (e.stat) addStat(e.stat, e.amt * lv); else if (e.proc) procs[e.proc] = (procs[e.proc] || 0) + e.amt * lv; } }
+        else if (b.stat) addStat(b.stat, b.amt * lv);
+        else if (b.proc) procs[b.proc] = (procs[b.proc] || 0) + b.amt * lv;
+      }
+      // 混沌詛咒（暫時負面）
+      if (G.run.curse && G.run.curse.rooms > 0) dmgPct -= 25;
     }
     // 深淵之鏡（永久被動）
     if (s.mirror) for (const node of G.MIRROR) { const rk = s.mirror[node.id] || 0; if (rk) addStat(node.stat, node.per * rk); }
@@ -313,15 +320,29 @@
   };
 
   // ================= 祝福 Run（深淵之門）=================
-  G.run = { active: false, room: 0, maxRoom: 0, blessings: [] };
-  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.maxRoom = 0; G.run.blessings = []; };
+  G.run = { active: false, room: 0, maxRoom: 0, blessings: [], boonLv: {}, curse: null };
+  G.startRun = function () { G.run.active = true; G.run.room = 0; G.run.maxRoom = 0; G.run.blessings = []; G.run.boonLv = {}; G.run.curse = null; };
   G.endRun = function () {
     if (!G.run.active) return;
     const gained = Math.floor((G.run.maxRoom || 1) * 1.5);
     if (gained > 0) { G.save.crystals = (G.save.crystals || 0) + gained; G.toast("🔮 深淵結束：獲得 💎" + gained + " 深淵結晶"); }
-    G.run.active = false; G.run.blessings = []; G.persist(); G.computeStats(); if (G.refreshHud) G.refreshHud();
+    G.run.active = false; G.run.blessings = []; G.run.boonLv = {}; G.run.curse = null; G.persist(); G.computeStats(); if (G.refreshHud) G.refreshHud();
   };
-  G.addBoon = function (id) { const b = G.ALL_BOONS[id]; if (!b) return; G.run.blessings.push(id); G.computeStats(); G.toast("🙏 獲得祝福：" + b.godIc + b.name); };
+  G.addBoon = function (id, chaos) {
+    const b = G.ALL_BOONS[id]; if (!b) return;
+    if (!G.run.blessings.includes(id)) G.run.blessings.push(id);
+    if (chaos) G.run.curse = { rooms: 2 }; // 混沌門：獲得強化祝福但背負 2 房詛咒
+    G.computeStats();
+    G.toast((chaos ? "🌀 混沌祝福：" : "🙏 獲得祝福：") + b.godIc + b.name);
+  };
+  // 祝福升級（pom）：把已有祝福強化一級（效果 ×等級）
+  G.upgradeBoon = function (id) {
+    if (!G.run.blessings.includes(id)) return;
+    G.run.boonLv[id] = (G.run.boonLv[id] || 1) + 1;
+    G.computeStats();
+    const b = G.ALL_BOONS[id];
+    G.toast("⬆️ 祝福升級：" + (b ? b.godIc + b.name : id) + " Lv" + G.run.boonLv[id]);
+  };
 
   // ================= 深淵之鏡（永久被動）=================
   G.mirrorCost = function (node) { const rk = G.save.mirror[node.id] || 0; return node.cost * (rk + 1); };
@@ -499,6 +520,7 @@
     G.player.x = area.w / 2; G.player.y = area.h - 160;
     genObstacles(area);
     G.run.room = floor; G.run.maxRoom = Math.max(G.run.maxRoom || 0, floor);
+    if (G.run.curse && G.run.curse.rooms > 0) { G.run.curse.rooms--; if (G.run.curse.rooms <= 0) { G.run.curse = null; G.toast("🌀 混沌詛咒已解除"); } }
     if (!G.save.maxFloor || floor > G.save.maxFloor) { G.save.maxFloor = floor; }
     G.trackEvent("floor", 1);
     G.persist();

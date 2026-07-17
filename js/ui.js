@@ -272,22 +272,96 @@
   $("dlgPanel").addEventListener("click", (e) => { if (!e.target.closest("#dlgOptions")) G.dlgAdvance(); });
 
   // ---------- 祝福三選一（深淵 Run）----------
-  G.openBoonPicker = function (next) {
+  // opts.chaos = 混沌門：祝福更強（雙倍）但背負 2 房詛咒
+  G.openBoonPicker = function (next, opts) {
+    opts = opts || {};
+    const chaos = !!opts.chaos;
+    const owned = new Set(G.run.blessings);
+    const ownedGods = new Set(G.run.blessings.map((id) => G.ALL_BOONS[id] && G.ALL_BOONS[id].god).filter(Boolean));
+    const cards = [];
+    // 二重祝福：湊齊兩位神時有機會出現
+    const eligibleDuos = (G.DUOS || []).filter((d) => !owned.has(d.id) && d.gods.every((gd) => ownedGods.has(gd)));
+    if (eligibleDuos.length) cards.push(eligibleDuos[Math.floor(Math.random() * eligibleDuos.length)]);
+    // 隨機一位神，補滿剩餘卡片
     const gods = Object.keys(G.BLESSINGS);
     const g = G.BLESSINGS[gods[Math.floor(Math.random() * gods.length)]];
-    const owned = new Set(G.run.blessings);
-    let boons = g.boons.filter((b) => !owned.has(b.id));
-    if (boons.length < 3) boons = g.boons.slice();
-    boons = boons.slice(0, 3);
-    $("boonTitle").innerHTML = `<span style="color:${g.color}">${g.ic} ${g.name}</span> 的祝福（三選一）`;
+    let pool = g.boons.filter((b) => !owned.has(b.id));
+    if (pool.length < 3) pool = g.boons.slice();
+    for (const b of pool) { if (cards.length >= 3) break; if (!cards.includes(b)) cards.push(b); }
+    $("boonTitle").innerHTML = chaos
+      ? `<span style="color:#c77dff">🌀 混沌祝福</span>（更強・背負詛咒）`
+      : `<span style="color:${g.color}">${g.ic} ${g.name}</span> 的祝福（三選一）`;
     const box = $("boonCards"); box.innerHTML = "";
-    for (const b of boons) {
+    for (const b of cards) {
+      const col = b.godColor || g.color, ic = b.godIc || g.ic;
       const d = document.createElement("div"); d.className = "card";
-      d.innerHTML = `<div class="ico" style="color:${g.color}">${g.ic}</div><div class="txt"><div class="name">${b.name}</div><div class="desc">${b.desc}</div></div>`;
-      d.onclick = () => { $("boonPanel").classList.remove("show"); G.addBoon(b.id); if (next) next(); };
+      const tag = b.duo ? `<span style="color:#ffd479;font-size:11px"> ✦二重</span>` : (chaos ? `<span style="color:#c77dff;font-size:11px"> ×2</span>` : "");
+      d.innerHTML = `<div class="ico" style="color:${col}">${ic}</div><div class="txt"><div class="name">${b.name}${tag}</div><div class="desc">${b.desc}</div></div>`;
+      d.onclick = () => {
+        $("boonPanel").classList.remove("show");
+        G.addBoon(b.id, chaos);
+        if (chaos) { G.run.boonLv[b.id] = (G.run.boonLv[b.id] || 1) + 1; G.computeStats(); } // 混沌：雙倍效果
+        if (next) next();
+      };
       box.appendChild(d);
     }
     $("boonPanel").classList.add("show");
+  };
+
+  // ---------- 祝福升級（pom）：強化一個已有祝福 ----------
+  G.openPomPicker = function (next) {
+    const ids = G.run.blessings.slice();
+    if (!ids.length) { if (next) next(); return; }
+    // 從已有祝福中隨機挑最多 3 個供選擇
+    for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    const pick = ids.slice(0, 3);
+    $("boonTitle").innerHTML = `<span style="color:#7af5d0">⬆️ 祝福升級</span>（三選一・效果提升）`;
+    const box = $("boonCards"); box.innerHTML = "";
+    for (const id of pick) {
+      const b = G.ALL_BOONS[id]; if (!b) continue;
+      const lv = (G.run.boonLv[id] || 1);
+      const d = document.createElement("div"); d.className = "card";
+      d.innerHTML = `<div class="ico" style="color:${b.godColor}">${b.godIc}</div><div class="txt"><div class="name">${b.name} <span style="color:#7af5d0;font-size:11px">Lv${lv}→${lv + 1}</span></div><div class="desc">${b.desc}</div></div>`;
+      d.onclick = () => { $("boonPanel").classList.remove("show"); G.upgradeBoon(id); if (next) next(); };
+      box.appendChild(d);
+    }
+    $("boonPanel").classList.add("show");
+  };
+
+  // ---------- 商店房（花金幣買祝福 / 回血 / 精英裝備）----------
+  G.openShopRoom = function (next) {
+    const w = G.world, floor = w.floor || 1;
+    const done = () => { $("shopPanel").classList.remove("show"); if (next) next(); };
+    const owned = new Set(G.run.blessings);
+    const gods = Object.keys(G.BLESSINGS);
+    // 隨機挑一個未擁有祝福
+    let boonOffer = null;
+    const gg = G.BLESSINGS[gods[Math.floor(Math.random() * gods.length)]];
+    const avail = gg.boons.filter((b) => !owned.has(b.id));
+    if (avail.length) boonOffer = avail[Math.floor(Math.random() * avail.length)];
+    const offers = [];
+    if (boonOffer) offers.push({ ic: boonOffer.godIc, name: "祝福：" + boonOffer.name, desc: boonOffer.desc, cost: 120 + floor * 15, buy: () => G.addBoon(boonOffer.id) });
+    offers.push({ ic: "❤️", name: "全滿回復", desc: "生命完全回復", cost: 80 + floor * 8, buy: () => { G.player.hp = G.player.maxHp; if (G.sfx) G.sfx("level"); } });
+    offers.push({ ic: "⚔️", name: "精英裝備", desc: "獲得一件高階裝備", cost: 150 + floor * 18, buy: () => { const lvl = (w.area.level || 12) + floor * 3; G.addToBag(G.rollItem(lvl, null, null, lvl + 10)); } });
+    const render = () => {
+      $("shopTitle").textContent = "🏪 深淵商店";
+      $("shopGold").textContent = "🪙 " + G.save.gold;
+      const body = $("shopBody"); body.innerHTML = "";
+      const tip = document.createElement("div"); tip.style.cssText = "font-size:12px;color:#9b8fc0;margin-bottom:8px"; tip.textContent = "花金幣購買一次性強化，購買後離開商店。"; body.appendChild(tip);
+      for (const o of offers) {
+        const afford = G.save.gold >= o.cost && !o.bought;
+        const row = document.createElement("div"); row.className = "talnode"; row.style.cssText = "display:flex;justify-content:space-between;align-items:center;cursor:" + (afford ? "pointer" : "default");
+        row.innerHTML = `<div><span style="font-weight:700">${o.ic} ${o.name}</span><div style="font-size:11px;color:#9b8fc0">${o.desc}</div></div>`
+          + `<span style="font-size:12px;color:${o.bought ? "#888" : (afford ? "#ffd479" : "#c66")}">${o.bought ? "已購買" : "🪙" + o.cost}</span>`;
+        if (afford) row.onclick = () => { G.save.gold -= o.cost; o.bought = true; o.buy(); document.getElementById("coins").textContent = "🪙 " + G.save.gold; G.persist(); render(); };
+        body.appendChild(row);
+      }
+      const leave = document.createElement("div"); leave.className = "talnode"; leave.style.cssText = "text-align:center;cursor:pointer;color:#7af5d0;font-weight:700;margin-top:6px"; leave.textContent = "離開商店，前進 →";
+      leave.onclick = done;
+      body.appendChild(leave);
+    };
+    render();
+    $("shopPanel").classList.add("show");
   };
 
   // 鐵匠對話入口
